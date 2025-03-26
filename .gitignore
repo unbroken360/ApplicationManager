@@ -1,0 +1,11 @@
+# Ignore OneDrive sync files
+*.tmp
+*.lnk
+*.~*
+~$*
+
+# Ignore PowerShell output
+*.log
+
+# Ignore environment files
+*.ps1xml
