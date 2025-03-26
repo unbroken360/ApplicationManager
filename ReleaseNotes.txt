@@ -1,0 +1,13 @@
+# 0.2 - Change Uninstall Collection naming; Add Browse Button for App selction
+# 0.3 - Added IntuneWinAppUtil.exe to Files Folder and as Parameter in AppCreation. Bugfix in CleanUpIntuneOutputFolder. Added ToolTips
+# 0.4 - Install AAD Modules: Write "SchUseStrongCrypto" Registry value if NuGet is not registered. Add AAD group prefix
+# 0.5 - Use AAD group prefix also for Pilot Group; Add ErrorHandler for TextBoxIntuneOutputFolder;
+# 0.6 - Add cscript as commandline in case of .vbs; Bugfix for subfolders; Add ServiceUI to commandline if located in source folder and "Allow User to interact" isset
+# 0.7 - Bugfix: Add Connect-MSIntuneGraph -TenantID $TenantName additional to -TenantName
+# 0.8 - New ErrorAction Stop (879); SourcePatch added to Description in Intune; Integration of Winget Application creation with PSADT; Change ProgressBar beahavior; Add ProgressBar to Config save action; Split App Creation Functions, for better future use; Change Intune App creation Function based on Cmdlet changes;
+# 0.9.1 - Rebuild Azure Authentication, Rebranding
+# 0.9.2 - Bugfix: RunInstallAs32Bit interpreted as System.String
+# 0.9.3 - Bugfix: Some Variables are interpreted as System.String in global state; Bugfix: Uninstall deployment
+# 0.9.4 - Bugfix: Uninstall Program not set; Open Logfile on UNC Paths
+# 0.9.5 - Changed Azure authentication to Application auth (https://learn.microsoft.com/en-us/samples/microsoftgraph/powershell-intune-samples/important/); Enhanced Azure Authentication Security
+# 0.9.6 - Update Drive-Connect behaviour, connect to SiteCode Drive only if Application should be created in ConfigMgr
