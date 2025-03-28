@@ -499,7 +499,22 @@ Function New-ProgressBar {
 
 }
 
+function Show-Toast {
+    param (
+        [string]$Message = "Done!",
+        [int]$Duration = 3000  # in milliseconds
+    )
 
+    $toast = New-Object System.Windows.Forms.NotifyIcon
+    $toast.Icon = [System.Drawing.SystemIcons]::Information
+    $toast.BalloonTipTitle = "Application Manager"
+    $toast.BalloonTipText = $Message
+    $toast.Visible = $true
+    $toast.ShowBalloonTip($Duration)
+
+    Start-Sleep -Milliseconds $Duration
+    $toast.Dispose()
+}
 
 function Start-ProgressBar {
 
@@ -1208,11 +1223,13 @@ function Get-WingetAppInfo {
         [string]$Source
     }
 
+    $useModule = $false
+
     if (Get-Command -Name "Find-WinGetPackage" -ErrorAction SilentlyContinue) {
-        Write-Host "Winget module is available. Searching for app: $SearchApp"
+        Write-Host "Winget module is available. Trying to search for app: $SearchApp"
 
         try {
-            $AppResult = Find-WinGetPackage -Name $SearchApp
+            $AppResult = Find-WinGetPackage -Name $SearchApp -ErrorAction Stop
 
             $results = foreach ($app in $AppResult) {
                 $software = [Software]::new()
@@ -1226,16 +1243,15 @@ function Get-WingetAppInfo {
             return $results
         }
         catch {
-            Write-Warning "Failed to find Winget app: $($_.Exception.Message)"
-            return $null
+            Write-Warning "Winget module failed with: $($_.Exception.Message). Falling back to native 'winget search'"
+            # Continue to fallback below
         }
     }
-    else {
-        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "WARNING: Winget module not available!" -Severity 2
-        Start-Sleep -Seconds 5
-        return $null
-    }
+
+    # If we get here, either module is missing or it failed
+    return Get-WingetAppInfo-Native $SearchApp
 }
+
 
 function Get-WingetPackageDetails {
     param (
@@ -1283,6 +1299,83 @@ function Get-WingetPackageDetails {
     }
 
     return [PSCustomObject]$info
+}
+
+function Get-WingetYamlContent {
+    param (
+        [Parameter(Mandatory = $true)][string]$PackageId,
+        [Parameter(Mandatory = $true)][string]$PackageVersion
+    )
+
+    try {
+        $firstLetter = $PackageId.Substring(0,1).ToLower()
+        $repoPath = "$($PackageId.Replace('.', '/'))"
+        $url = "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/$firstLetter/$repoPath/$PackageVersion/$PackageId.installer.yaml"
+
+        $tmpPath = Join-Path $env:TEMP "$PackageId.installer.yaml"
+
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Downloading YAML for $PackageId..."
+        Invoke-WebRequest -Uri $url -OutFile $tmpPath -UseBasicParsing -ErrorAction Stop
+
+        Import-Module powershell-yaml -ErrorAction Stop
+
+        return Get-Content $tmpPath -Raw | ConvertFrom-Yaml
+    }
+    catch {
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "❌ Failed to fetch or parse YAML: $($_.Exception.Message)" -Severity 3
+        return $null
+    }
+}
+
+function Get-WingetYamlValue {
+    param (
+        [Parameter(Mandatory = $true)][PSCustomObject]$YamlContent,
+        [Parameter(Mandatory = $true)][string]$PropertyPath
+    )
+
+    try {
+        $value = $YamlContent | Select-Object -ExpandProperty $PropertyPath -ErrorAction Stop
+        return $value
+    }
+    catch {
+        return $null
+    }
+}
+
+
+function Download-PSADTTemplate {
+    param (
+        [string]$DownloadUrl = "https://github.com/PSAppDeployToolkit/PSAppDeployToolkit/releases/latest/download/PSAppDeployToolkit_Template_v4.zip",
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationFolder,
+        [Parameter(Mandatory = $true)]
+        $ProgressBar
+    )
+
+    $templateSubFolder = Join-Path $DestinationFolder "_PSADT_Template_v4"
+
+    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Preparing template download folder..."
+    if (-not (Test-Path $templateSubFolder)) {
+        New-Item -ItemType Directory -Path $templateSubFolder | Out-Null
+    }
+
+    $destinationZip = Join-Path $templateSubFolder "PSAppDeployToolkit_Template_v4.zip"
+
+    try {
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Downloading PSADT v4 Template from GitHub..."
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $destinationZip -UseBasicParsing
+
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Extracting PSADT Template..."
+        Expand-Archive -Path $destinationZip -DestinationPath $templateSubFolder -Force
+        Remove-Item $destinationZip -Force
+
+        # Return the template folder path
+        return Get-Item $templateSubFolder
+    }
+    catch {
+        [System.Windows.MessageBox]::Show("Download failed: $($_.Exception.Message)", "Error", "OK", "Error")
+        return $null
+    }
 }
 
 
@@ -1450,15 +1543,23 @@ function Install-IntuneModule {
 
 function Install-WingetClient {
     try {
-        # Use your existing function to check and update or install if not present
+        # Check and install/update WinGet PowerShell module
         CheckAndUpdate-Module -ModuleName "Microsoft.WinGet.Client"
-        
-        # Optionally, import it after install
         Import-Module Microsoft.WinGet.Client -Force -ErrorAction SilentlyContinue
-        Write-Host "Winget Client module is ready to use." -ForegroundColor Green
+        Write-Host "✅ Winget Client module is ready to use." -ForegroundColor Green
     }
     catch {
-        Write-Warning "Failed to install or update Winget Client module: $($_.Exception.Message)"
+        Write-Warning "❌ Failed to install or update Winget Client module: $($_.Exception.Message)"
+    }
+
+    try {
+        # Check and install/update powershell-yaml module
+        CheckAndUpdate-Module -ModuleName "powershell-yaml"
+        Import-Module powershell-yaml -Force -ErrorAction SilentlyContinue
+        Write-Host "✅ YAML module is ready to use." -ForegroundColor Green
+    }
+    catch {
+        Write-Warning "❌ Failed to install or update powershell-yaml module: $($_.Exception.Message)"
     }
 }
 
@@ -2838,14 +2939,27 @@ function CreateCMApplication {
         [Parameter()]
         [string]$ApplicationVersion,
         [Parameter()]
-        [string]$ApplicationFolderName
+        [string]$ApplicationFolderName,
+        [Parameter()]
+        [string]$Description
             
     )
     # Create the application
 
     if (!(Get-CMApplication -Name $ApplicationName)) {
-      
-        New-CMApplication -Name $ApplicationName -Publisher $Publisher -AutoInstall $true -SoftwareVersion $ApplicationVersion -LocalizedName $Appfullname 
+        $params = @{
+            Name             = $ApplicationName
+            Publisher        = $Publisher
+            AutoInstall      = $true
+            SoftwareVersion  = $ApplicationVersion
+            LocalizedName    = $Appfullname
+        }
+
+        if ($Description) {
+            $params.Description = $Description
+        }
+
+        New-CMApplication @params
         <# if ($Securityscope -ne "") {try{
                                             Add-CMObjectSecurityScope -Name $Securityscope -InputObject (Get-CMApplication -Name $ApplicationName)
                                             Write-Host "Added Securityscope $Securityscope to Application " -NoNewline; Write-Host $ApplicationName -ForegroundColor Green
@@ -3740,6 +3854,295 @@ function ButtonCreateClick {
     }
 }
 
+function Get-GlobalDeploymentSettings {
+    return @{
+        CreateInConfigMgr           = $checkboxCreateInConfigMgr.IsChecked
+        CreateInIntune              = $checkboxCreateInIntune.IsChecked
+        CreateCollection            = $CheckBoxCreateCollection.IsChecked
+        CreateADGroup               = $CheckBoxCreateADGroup.IsChecked
+        CollectionType              = if ($RadioButtonUser.IsChecked) { "User" } else { "Device" }
+        UserInteraction             = $CheckboxInteraction.IsChecked
+        DistributeContent           = $CheckBoxDistributeContent.IsChecked
+        CreateDeployment            = $CheckBoxCreateDeployment.IsChecked
+        ApplicationtestCollectionname = $ApplicationtestCollectionname.Text
+        RunInstallAs32Bit           = $RunInstallAs32Bit
+        AllowFallbackSourceLocation = $AllowFallbackSourceLocation
+        DownloadOnSlowNetwork       = $DownloadOnSlowNetwork
+        EnableSWMapping             = $SWMappingenabled -eq $true
+        SWProductTable              = $SWProductTable
+        SWMapDBName                 = $SWMapDBName
+        CatalogID                   = $TextboxSWCatalogID.Text
+        Owner                       = $env:USERNAME
+        LogFile                     = $logfile
+        ShowSummary                 = $showsummaryfile -eq $true
+        MailServer                  = $mailserver
+        MailFrom                    = $mailfrom
+        MailRecipients              = $mailrecipients
+        AADGroupNamePrefix          = $AADGroupNamePrefix
+        AADUninstallGroupNamePrefix = $AADUninstallGroupNamePrefix
+        PilotAADGroup               = $PilotAADGroup
+        DeviceOUPath                = $DeviceOUPath
+        OUPath                      = $DeviceOUPath
+        DetectionType               = if ($TextBoxMSIPackage.Text.Length -gt 0) { "MSI" } else { "Script" }
+        DetectionMethod             = 'if (Test-Path C:\\DummyDetectionMethod) {Write-Host "IMPORTANT! This detection method does not work. You must manually change it."}'
+    }
+}
+
+function Create-ApplicationObjects {
+    param (
+        [string]$ApplicationName,
+        [string]$Appfullname,
+        [string]$ApplicationVersion,
+        [string]$ApplicationDescription,
+        [string]$Publisher,
+        [string]$InstallationProgram,
+        [string]$UninstallationProgram,
+        [string]$ContentSourcePath,
+        [string]$CollectionName,
+        [string]$CollectionNameUninstall,
+        [string]$CollectionFolderName = $null,
+        [string]$CollectionUninstallFolderName = $null,
+        [string]$ADGroupName,
+        [string]$ADGroupDescription,
+        [string]$OUPath = $null,
+        [string]$ProductCode,
+        [string]$ProductVersion,
+        [string]$DetectionType = "Script",
+        [string]$DetectionMethod = 'if (Test-Path C:\\DummyDetectionMethod) {Write-Host "IMPORTANT! This detection method does not work. You must manually change it."}',
+
+        [bool]$CreateInConfigMgr = $true,
+        [bool]$CreateInIntune = $true,
+        [bool]$CreateCollection = $false,
+        [bool]$CreateADGroup = $false,
+        [string]$CollectionType = "Device",
+        [bool]$UserInteraction = $false,
+        [bool]$DistributeContent = $false,
+        [bool]$CreateDeployment = $false,
+        [string]$DeployPurpose = "Available",
+        [string]$ApplicationtestCollectionname = $null,
+        [bool]$RunInstallAs32Bit = $false,
+        [bool]$AllowFallbackSourceLocation = $false,
+        [bool]$DownloadOnSlowNetwork = $false,
+        [bool]$EnableSWMapping = $false,
+        [string]$SWProductTable = $null,
+        [string]$SWMapDBName = $null,
+        [string]$CatalogID = $null,
+        [string]$Owner = $env:USERNAME,
+        [string]$LogFile = $null,
+        [bool]$ShowSummary = $false,
+        [string]$MailServer = $null,
+        [string]$MailFrom = $null,
+        [string]$MailRecipients = $null,
+        [string]$AADGroupNamePrefix = $null,
+        [string]$AADUninstallGroupNamePrefix = $null,
+        [string]$PilotAADGroup = $null,
+        [string]$DeviceOUPath = $null
+    )
+
+    # This function assumes all pre-validation is already done and starts object creation.
+    $ProgressBar = New-ProgressBar
+    Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create Application" -CurrentOperation "Starting Object creation..."
+
+    if ($CreateInConfigMgr) {
+
+        try {
+            Import-Module (Join-Path $(Split-Path $env:SMS_ADMIN_UI_PATH) ConfigurationManager.psd1) | Out-Null
+            Set-Location ($iniFile.ConfigMgr.SiteCode + ":")
+            $sccmloc = Get-Location
+            $ConfigMgrConnect = $true
+        }
+        catch {
+            $Message = "No connection to ConfigMgr Provider established..."
+            $ConfigMgrConnect = $false
+            Write-Host $Message -ForegroundColor DarkYellow
+            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $Message -Severity 3
+            return
+        }
+
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # ++   Application
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        CreateCMApplication -ApplicationName $ApplicationName -Publisher $Publisher -Appfullname $Appfullname -ApplicationVersion $ApplicationVersion -ApplicationFolderName $ApplicationFolderName -Description $ApplicationDescription
+
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # ++   Collections
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        if ($CreateCollection) {
+            CreateCMCollection -CollectionName $CollectionName -CollectionNameUninstall $CollectionNameUninstall -CollectionType $CollectionType -CollectionFolderName $CollectionFolderName -CollectionUninstallFolderName $CollectionUninstallFolderName -ADGroup:$CreateADGroup
+        }
+
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # ++   DEPLOYMENT TYPE
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        CreateCMDeploymentType -ApplicationName $ApplicationName -InstallationProgram $InstallationProgram -UnInstallationProgram $UninstallationProgram -ContentSourcePath $ContentSourcePath -DetectionType $DetectionType -DetectionMethod $DetectionMethod -ProductCode $ProductCode -ProductVersion $ProductVersion -Userinteraction:$UserInteraction -RunInstallAs32Bit:$RunInstallAs32Bit -AllowFallbackSourceLocation:$AllowFallbackSourceLocation -DownloadOnSlowNetwork:$DownloadOnSlowNetwork
+
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # ++   Distribute Content
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        if ($DistributeContent) {
+            DistributeContent -ApplicationName $ApplicationName
+        }
+
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # ++   Deployments
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        if ($CreateDeployment) {
+            New-CMApplicationDeployment -CollectionName $CollectionName -Name $ApplicationName -DeployPurpose $DeployPurpose
+
+            $message = "Created $DeployPurpose deployment for $ApplicationName to collection $CollectionName"
+            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+            Write-Host $message -ForegroundColor Green
+            write-log $message -type 1
+
+            New-CMApplicationDeployment -CollectionName $CollectionNameUninstall -Name $ApplicationName -DeployPurpose Required -DeployAction Uninstall
+            $message = "Created $DeployPurpose UNINSTALL deployment for $ApplicationName to collection $CollectionName"
+            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+            Write-Host $message -ForegroundColor Green
+            write-log $message -type 1
+
+            if (-not [string]::IsNullOrWhiteSpace($ApplicationtestCollectionname)) {
+                New-CMApplicationDeployment -CollectionName $ApplicationtestCollectionname -Name $ApplicationName -DeployPurpose Available -DeployAction Install
+                $message = "Created available Test deployment for $ApplicationName to collection $ApplicationtestCollectionname"
+                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+                Write-Host $message -ForegroundColor Green
+                write-log $message -type 1
+            }
+        }
+
+        if (-not $ProductCode) {
+            $message = "IMPORTANT! Remember to manually modify the detection method afterwards."
+            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+            Write-Host $message -ForegroundColor Yellow
+        }
+
+        Set-Location $driveloc
+    } # End ConfigMgr
+
+
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    # ++   AD-Groups
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+    if ($CreateADGroup -and $OUPath) {
+        CreateADGroup -ADGroupName $ADGroupName -OUPath $OUPath -ADGroupDescription $ADGroupDescription -ADGroupNamePrefix $AADGroupNamePrefix -ADUninstallGroupNamePrefix $AADUninstallGroupNamePrefix
+    }
+
+
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    # ++   Intune
+    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        
+    # Create Application in Intune
+    
+    if ($CreateInIntune) {
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Start creating Intune Application"
+
+        if (-not (Connect-Azure -User $AADUser)) {
+            $Message = "Failed to connect to Azure or Intune."
+            Write-Host $Message -ForegroundColor Red
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Failed to connect to Intune" -PercentComplete "0" -CurrentOperation $Message -Severity 3
+            return
+        }
+
+        $IntuneApp = Create-IntuneApp -Publisher $Publisher -DisplayName $ApplicationName -ContentSourcePath $ContentSourcePath -InstallationProgram $InstallationProgram -UninstallationProgram $UninstallationProgram
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "$ApplicationName successfully created"
+
+        if ($CreateDeployment) {
+            $message = "Create AAD Group $($ApplicationName)-Install"
+            Write-Host $message
+            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+
+            $AADInstalllAppGroup = Create-AADGroup -DisplayName "$($AADGroupNamePrefix)$($ApplicationName)-Install" -Description "AutoGenerated Group by <Cancom Application Manager> for $($ApplicationName) deployment"
+            [string]$AppID = $IntuneApp.id
+
+            try {
+                Add-IntuneWin32AppAssignmentGroup -Include -ID $AppID -GroupID $($AADInstalllAppGroup.Id) -Intent $DeployPurpose -Notification "showAll"
+                $message = "Successfully created App assignment"
+                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+                Write-Host $message -ForegroundColor Green
+            }
+            catch {
+                $message = "Error: Failed to create App assignment"
+                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message -Severity 3
+                Write-Host $message -ForegroundColor Red
+            }
+
+            if ($UninstallationProgram) {
+                $AADUninstalllAppGroup = Create-AADGroup -DisplayName "$($AADUninstallGroupNamePrefix)$($ApplicationName)-Uninstall" -Description "AutoGenerated Group by <Cancom Application Manager> for $($ApplicationName) Uninstall deployment"
+                try {
+                    Add-IntuneWin32AppAssignmentGroup -Include -ID $AppID -GroupID $($AADUninstalllAppGroup.Id) -Intent "uninstall" -Notification "showAll"
+                    $message = "Successfully created App-Uninstall assignment"
+                    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+                    Write-Host $message -ForegroundColor Green
+                }
+                catch {
+                    $message = "Error: Failed to create App Uninstall assignment"
+                    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message -Severity 3
+                    Write-Host $message -ForegroundColor Red
+                }
+            }
+
+            if ($PilotAADGroup) {
+                $AADPilotAppGroup = Create-AADGroup -DisplayName "$($AADGroupNamePrefix)$PilotAADGroup" -Description "AutoGenerated Group by <Cancom Application Manager> for Application Deployment Tests"
+                try {
+                    Add-IntuneWin32AppAssignmentGroup -Include -ID $AppID -GroupID $($AADPilotAppGroup.Id) -Intent "available" -Notification "showAll"
+                    $message = "Successfully created App assignment for TestGroup $($PilotAADGroup)"
+                    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+                    Write-Host $message -ForegroundColor Green
+                }
+                catch {
+                    $message = "Error: Failed to create Test-Group assignment"
+                    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message -Severity 3
+                    Write-Host $message -ForegroundColor Red
+                }
+            }
+        }
+    } # End Intune
+    #END Create Intune / AAD Objects if Checkbox is selected
+
+ 
+    if ($EnableSWMapping -and $SWProductTable -and $SWMapDBName -and $ADGroupName) {
+        $query = "select * from $SWProductTable where ADGruppe = '$ADGroupName'"
+        $ADgrs = query-SQLSWMAP -querytext $query -DBname $SWMapDBName
+
+        if (-not $ADgrs) {
+            try {
+                Insert-SQLSWProduct -SWPName $ApplicationName -SWPVersion $ApplicationVersion -SWInstallmethod "SCCM" -SWPOwner $Owner -SWPADGroup $ADGroupName -CatalogID $CatalogID
+                Write-Host "Successfully created entry in SoftwareProductCatalog-Table" -ForegroundColor Green
+                write-log "Successfully created entry in SoftwareProductCatalog-Table" -type 1
+            }
+            catch {
+                $message = "Error while creating Entry in SoftwareProductCatalog-Table: $($_.Exception.Message)"
+                Write-Host $message -ForegroundColor Red
+                write-log $message -type 3
+            }
+        }
+        else {
+            $message = "AdGroup already in SoftwareProductCatalog-Table, skipping insert"
+            Write-Host $message -ForegroundColor Yellow
+            write-log $message -type 1
+        }
+        $ProgressBar1.PerformStep()
+    }
+
+    if ($MailServer) {
+        $subjecttext = "Paket $ApplicationName wurde importiert"
+        $bodytext = "<b>Paket:</b> $ApplicationName<br><b>User:</b> $Owner"
+        Send-MailMessage -SmtpServer $MailServer -From $MailFrom -Subject $subjecttext -Body $bodytext -BodyAsHtml -To $MailRecipients
+    }
+
+
+    if ($ShowSummary -and (Test-Path $LogFile)) {
+        Invoke-Item $LogFile
+    }
+
+    Show-Toast -Message "Application '$ApplicationName' created successfully!"
+
+    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "SUCCESS: Created Application!"
+    Close-ProgressBar $ProgressBar
+}
+
+
 
 
 #############################################################################
@@ -3958,91 +4361,46 @@ Get-WingetCmd
 
 
 $ButtonWingetSearch.add_Click({
-        $SearchTerm = $TextBoxWingetSearch.Text
-        $Message = "Searching for $SearchTerm"
+    $SearchTerm = $TextBoxWingetSearch.Text
+    $Message = "Searching for $SearchTerm"
 
-        $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($Winget)
-        $bmp = $icon.ToBitmap()
-        $stream = New-Object System.IO.MemoryStream
-        $bmp.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
-        $imageSource = [System.Windows.Media.Imaging.BitmapFrame]::Create($stream)
 
-        $ProgressBar = New-ProgressBar
-        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $Message
+    $ProgressBar = New-ProgressBar
+    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $Message
 
-        Write-Host $Message
-        $arrayItems = @()
+    Write-Host $Message
+    $arrayItems = @()
 
-        # Use PowerShell module if available, else fallback to native
-        if (Get-Command -Name "Find-WinGetPackage" -ErrorAction SilentlyContinue) {
-            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Searching via WinGet PowerShell Module..."
-            $List = Get-WingetAppInfo $SearchTerm
-        }
-        else {
-            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Searching via Native winget.exe..."
-            $List = Get-WingetAppInfo-Native $SearchTerm
-        }
+    # Use PowerShell module if available, else fallback to native
+    if (Get-Command -Name "Find-WinGetPackage" -ErrorAction SilentlyContinue) {
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Searching via WinGet PowerShell Module..."
+        $List = Get-WingetAppInfo $SearchTerm
+    } else {
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Searching via Native winget.exe..."
+        $List = Get-WingetAppInfo-Native $SearchTerm
+    }
 
-        foreach ($App in $List) {
-            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Fetching details for $($App.Name)..."
+    foreach ($App in $List) {
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Processing $($App.Name)..."
 
-            # Try to enrich with detailed info
-            $details = Get-WingetPackageDetails -PackageId $App.Id
+        $itemObject = New-Object PSObject
 
-            $itemObject = New-Object PSObject
-            $itemObject | Add-Member -Type NoteProperty -Name "Icon" -Value $imageSource
-            $itemObject | Add-Member -Type NoteProperty -Name "ID" -Value $App.Id
-            $itemObject | Add-Member -Type NoteProperty -Name "Name" -Value $App.Name
+        $itemObject | Add-Member -Type NoteProperty -Name "ID"      -Value $App.Id
+        $itemObject | Add-Member -Type NoteProperty -Name "Name"    -Value $App.Name
 
-            if ($App.Version) {
-                $version = $App.Version
-            }
-            elseif ($details.Version) {
-                $version = $details.Version
-            }
-            else {
-                $version = ""
-            }
-            $itemObject | Add-Member -Type NoteProperty -Name "Version" -Value $version
+        $version = if ($App.Version) { $App.Version } else { "" }
+        $itemObject | Add-Member -Type NoteProperty -Name "Version" -Value $version
 
-            if ($App.Source) {
-                $source = $App.Source
-            }
-            else {
-                $source = ""
-            }
-            $itemObject | Add-Member -Type NoteProperty -Name "Source" -Value $source
+        $source = if ($App.Source) { $App.Source } else { "" }
+        $itemObject | Add-Member -Type NoteProperty -Name "Source"  -Value $source
 
-            if ($details.Description) {
-                $desc = $details.Description
-            }
-            else {
-                $desc = ""
-            }
-            $itemObject | Add-Member -Type NoteProperty -Name "Description" -Value $desc
+        $arrayItems += $itemObject
+    }
 
-            if ($details.Homepage) {
-                $homepage = $details.Homepage
-            }
-            else {
-                $homepage = ""
-            }
-            $itemObject | Add-Member -Type NoteProperty -Name "Homepage" -Value $homepage
+    $dataGridWinget.ItemsSource = $arrayItems
+    Close-ProgressBar $ProgressBar
+})
 
-            if ($details.InstallerUrl) {
-                $installerUrl = $details.InstallerUrl
-            }
-            else {
-                $installerUrl = ""
-            }
-            $itemObject | Add-Member -Type NoteProperty -Name "InstallerUrl" -Value $installerUrl
-
-            $arrayItems += $itemObject
-        }
-
-        $dataGridWinget.ItemsSource = $arrayItems
-        Close-ProgressBar $ProgressBar
-    })
 
 
 
@@ -4077,7 +4435,7 @@ function Get-WingetCmd {
 $WingetDefaultCMD = 'Execute-Process -Path "$winget" -Parameters "install --id <AppID> -h --accept-package-agreements --accept-source-agreements"'
 
 
-$dataGridWinget.add_SelectionChanged({
+    $dataGridWinget.add_SelectionChanged({
         foreach ($WingetApp in $dataGridWinget.SelectedItems) {
             $WingetCMD = $WingetDefaultCMD.replace('<AppID>', $($WingetApp.ID)).replace('<AppName>', $($WingetApp.Name))
             $TextBoxWingetPreview.Text = $WingetCMD
@@ -4087,43 +4445,141 @@ $dataGridWinget.add_SelectionChanged({
 
 
 $ButtonCreateWinGet.add_Click({
-    
-        $ProgressBar = New-ProgressBar
-        Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "Integrate Winget Application into PSADT Template"
-    
-        foreach ($WingetApp in $dataGridWinget.SelectedItems) {
-            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "Start creating PSADT App for $($WingetApp.Name)"
-            $WingetAppTMPPath = "$($Packagefolderpath)\$($WingetApp.Name)_$($WingetApp.ID)"
-            #Copy PSADT Template
-            Copy-Item -Path "$($PSADTTemplate)" -Destination "$($WingetAppTMPPath)" -recurse -Force
 
-            $file = "$($WingetAppTMPPath)\Deploy-Application.ps1"
+    $ProgressBar = New-ProgressBar
+    Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "Integrate Winget Application into PSADT Template"
 
-            $match = '## <Perform Installation tasks here>'
-            #$DefaultWingetCallFile = $workingdir + "\Files\" + "DefaultWingetCall.txt"
-            $DefaultWingetCall = $WingetFunction + $TextBoxWingetPreview.Text
-        
-        
-            $Content = $DefaultWingetCall.replace('<AppID>', $($WingetApp.ID)).replace('<AppName>', $($WingetApp.Name))
-            Replace-InFile -FilePath $file -Find $match -Replace $Content
-        
-            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "Successfully created '$($WingetApp.Name)' in Sourcepath"
-            sleep -Seconds 5
+    # Check if PSADT Template path is valid
+    if ([string]::IsNullOrWhiteSpace($PSADTTemplate) -or -not (Test-Path $PSADTTemplate)) {
 
+        $result = [System.Windows.MessageBox]::Show("PSADT Template path is not valid. Do you want to download the v4 template from GitHub?", "PSADT Template Missing", "YesNo", "Warning")
+
+        if ($result -eq "Yes") {
+            $templateFolder = Download-PSADTTemplate -DestinationFolder $Packagefolderpath -ProgressBar $ProgressBar
+
+
+            if ($templateFolder -ne $null) {
+                $global:PSADTTemplate = $templateFolder.FullName
+            }
+            else {
+                [System.Windows.MessageBox]::Show("Template could not be downloaded. Aborting.", "Error", "OK", "Error")
+                return
+            }
         }
-    
+        else {
+            [System.Windows.MessageBox]::Show("You chose not to download the template. Aborting.", "Cancelled", "OK", "Warning")
+            return
+        }
+    }
 
-        Close-ProgressBar $ProgressBar
+    foreach ($WingetApp in $dataGridWinget.SelectedItems) {
+        Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "Start creating PSADT App for $($WingetApp.Name)"
 
-    })
+        #$yaml = Get-WingetYamlContent -PackageId $WingetApp.ID -PackageVersion $WingetApp.Version
+
+        if ($yaml -eq $null) {
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ YAML not found for $($WingetApp.ID)" -Severity 3
+            continue
+        }
+
+        # Build folder path using version
+        $WingetAppTMPPath = Join-Path $Packagefolderpath "$($WingetApp.Name)_$($WingetApp.ID)"
+
+        try {
+            Copy-Item -Path $PSADTTemplate -Destination $WingetAppTMPPath -Recurse -Force
+        }
+        catch {
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ Failed to copy template to $WingetAppTMPPath" -Severity 3
+            continue
+        }
+
+        # Determine which file to patch (v3 or v4)
+        $fileV3 = Join-Path $WingetAppTMPPath "Deploy-Application.ps1"
+        $fileV4 = Join-Path $WingetAppTMPPath "Invoke-AppDeployToolkit.ps1"
+        $file = if (Test-Path $fileV4) { $fileV4 } elseif (Test-Path $fileV3) { $fileV3 } else { $null }
+
+        if (-not $file) {
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ No PSADT script found in: $WingetAppTMPPath" -Severity 3
+            continue
+        }
+
+        # Prepare content for insertion
+        $DefaultWingetCall = $WingetFunction + $TextBoxWingetPreview.Text
+        $Content = $DefaultWingetCall.Replace('<AppID>', $WingetApp.ID).Replace('<AppName>', $WingetApp.Name)
+
+        try {
+            Replace-InFile -FilePath $file -Find '## <Perform Installation tasks here>' -Replace $Content
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "✅ Successfully created '$($WingetApp.Name)' in Sourcepath"
+        }
+        catch {
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ Failed to modify script for $($WingetApp.Name)" -Severity 3
+        }
+
+        Start-Sleep -Seconds 2
+    }
+
+
+
+    Close-ProgressBar $ProgressBar
+})
 
 
 # fill the combobox with some powershell objects
 #$null = $DDPackages.Items.Add('sdf')
 
 #Add Function to ButtonCreate
-$ButtonCreate.add_Click({ ButtonCreateClick })
+#$ButtonCreate.add_Click({ ButtonCreateClick })
 
+$ButtonCreate.add_Click({
+    if (-not (Validate-Form)) {
+        return
+    }
+
+    $ProductCode = $null
+    $ProductVersion = $null
+
+    if ($TextBoxMSIPackage.Text) {
+        try {
+            $ProductCode = [GUID](Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductCode)[3]
+        } catch { $ProductCode = $null }
+
+        try {
+            $ProductVersion = (Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductVersion).Trim()
+        } catch { $ProductVersion = $null }
+    }
+
+    $DetectionType = if ($ProductCode -and $ProductVersion) { "MSI" } else { "Script" }
+
+    $ApplicationName = if ($TextBoxVersion.Text) { "$($TextBoxAppName.Text) $($TextBoxVersion.Text)" } else { $TextBoxAppName.Text }
+    $DeployPurpose = "Available"
+    if ($RadioButtonRequired.IsChecked) { $DeployPurpose = "Required" }
+    elseif ($RadioButtonAvailable.IsChecked) { $DeployPurpose = "Available" }
+
+    $CollectionFolderName = if ($CheckboxStandardapp.IsChecked) { $Standardapplicationfoldername } else { $null }
+
+    $appParams = @{
+        ApplicationName           = $ApplicationName
+        Appfullname               = "$($TextBoxAppName.Text) $($TextBoxVersion.Text)"
+        ApplicationVersion        = $TextBoxVersion.Text
+        ApplicationDescription    = "Created by ApplicationManager"
+        Publisher                 = $TextBoxPublisher.Text
+        InstallationProgram       = $TextBoxInstallProgram.Text
+        UninstallationProgram     = $TextBoxUnInstallProgram.Text
+        ContentSourcePath         = $TextBoxSourcePath.Text
+        CollectionName            = $TextBoxCollection.Text
+        CollectionNameUninstall   = "$($TextBoxCollection.Text) - Uninstall"
+        ADGroupName               = $TextBoxADGroup.Text
+        ADGroupDescription        = "Members of this group will be targeted for deployment of $($TextBoxAppName.Text) in ConfigMgr"
+        ProductCode               = $ProductCode
+        ProductVersion            = $ProductVersion
+        DetectionType             = $DetectionType
+        DeployPurpose             = $DeployPurpose
+        CollectionFolderName      = $CollectionFolderName
+    }
+
+    $globalParams = Get-GlobalDeploymentSettings
+    Create-ApplicationObjects @globalParams @appParams
+})
 
 
 #Show Form

@@ -11,3 +11,13 @@
 # 0.9.4 - Bugfix: Uninstall Program not set; Open Logfile on UNC Paths
 # 0.9.5 - Changed Azure authentication to Application auth (https://learn.microsoft.com/en-us/samples/microsoftgraph/powershell-intune-samples/important/); Enhanced Azure Authentication Security
 # 0.9.6 - Update Drive-Connect behaviour, connect to SiteCode Drive only if Application should be created in ConfigMgr
+
+# 0.10.0
+- Full compatibility with the latest PowerShell App Deployment Toolkit version 4.x.
+- Implement Winget PowerShell Module to support all Winget Apps
+- MSI Detection method is automatically used if MSI detected
+- Extracted core logic into a reusable function: Create-ApplicationObjects.
+- Parameters control behavior instead of referencing UI controls directly ($CreateInConfigMgr, $CreateInIntune, etc.).
+- Enables reusing the logic in multiple places like ButtonCreateClick and ButtonCreateWinGet.
+- Avoided redundant code and UI-specific dependencies inside logic functions.
+- Improved maintainability and testability of the script.
