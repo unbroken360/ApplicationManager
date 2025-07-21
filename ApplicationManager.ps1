@@ -2,7 +2,7 @@
 # Author  : Stefan Schuh
 #
 # Created : 2020/11/04
-# Modified : 2024/06/19
+# Modified : 2025/04/09
 # 0.1 - Created WPF Version
 # 0.2 - Change Uninstall Collection naming; Add Browse Button for App selction
 # 0.3 - Added IntuneWinAppUtil.exe to Files Folder and as Parameter in AppCreation. Bugfix in CleanUpIntuneOutputFolder. Added ToolTips
@@ -17,6 +17,15 @@
 # 0.9.4 - Bugfix: Uninstall Program not set; Open Logfile on UNC Paths
 # 0.9.5 - Changed Azure authentication to Application auth (https://learn.microsoft.com/en-us/samples/microsoftgraph/powershell-intune-samples/important/); Enhanced Azure Authentication Security
 # 0.9.6 - Update Drive-Connect behaviour, connect to SiteCode Drive only if Application should be created in ConfigMgr
+# 0.10.0
+# - Full compatibility with the latest PowerShell App Deployment Toolkit version 4.x.
+# - Implement Winget PowerShell Module to support all Winget Apps
+# - MSI Detection method is automatically used if MSI detected
+# - Extracted core logic into a reusable function: Create-ApplicationObjects.
+# - Parameters control behavior instead of referencing UI controls directly ($CreateInConfigMgr, $CreateInIntune, etc.).
+# - Enables reusing the logic in multiple places like ButtonCreateClick and ButtonCreateWinGet.
+# - Avoided redundant code and UI-specific dependencies inside logic functions.
+# - Improved maintainability and testability of the script.
 #
 # Purpose : This script imports Application to ConfigMgr and Intune
 # https://www.benecke.cloud/powershell-how-to-build-a-gui-with-visual-studio/
@@ -31,7 +40,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        Title="Application Management" Height="650" Width="856" ResizeMode="NoResize">
+        Title="Application Management" Height="700" Width="856" ResizeMode="NoResize">
     <Grid Margin="0,0,0,29" Background="#FF0035" Width="846">
         <Grid.RowDefinitions>
             <RowDefinition/>
@@ -39,16 +48,16 @@
         <Grid.ColumnDefinitions>
             <ColumnDefinition/>
         </Grid.ColumnDefinitions>
-        <TabControl Name="tabControl" Margin="0,60,0,-32" Width="846">
-            <TabItem Header="Application Import" Margin="-2,0,-2,0">
-                <Grid Background="#FFE5E5E5" Height="530" Margin="0,0,-4,0">
+        <TabControl Name="TabControlMain" Margin="0,88,0,-29" Width="846">
+            <TabItem Header="Application Import" Name="TabCreateApp" Margin="-2,0,-2,0">
+                <Grid Background="#FFE5E5E5" Height="575" Margin="0,0,-4,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="69*"/>
                         <ColumnDefinition Width="73*"/>
                         <ColumnDefinition Width="255*"/>
                     </Grid.ColumnDefinitions>
 
-                    <Grid Background="White" Grid.ColumnSpan="3">
+                    <Grid Background="White" Grid.ColumnSpan="3" Margin="0,0,0,10">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="429*"/>
                             <RowDefinition Height="29*"/>
@@ -56,62 +65,49 @@
                             <RowDefinition Height="56*"/>
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="147*"/>
+                            <ColumnDefinition Width="12*"/>
+                            <ColumnDefinition Width="7*"/>
+                            <ColumnDefinition Width="21*"/>
+                            <ColumnDefinition Width="94*"/>
+                            <ColumnDefinition Width="13*"/>
                             <ColumnDefinition Width="155*"/>
                             <ColumnDefinition Width="400*"/>
                             <ColumnDefinition Width="142*"/>
                         </Grid.ColumnDefinitions>
-                        <TextBox Name="TextBoxDDPackages" Grid.Column="1" HorizontalAlignment="Left" Margin="10,66,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" IsEnabled="False"/>
-                        <ComboBox Name="DDPackages" Grid.Column="1" HorizontalAlignment="Left" Margin="10,68,0,0" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="22"/>
-                        <Label Name="labelDDPackages" Content="Applicationfolder:" HorizontalAlignment="Center" Margin="0,66,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26"/>
-                        <TextBox Name="TextBoxMSIPackage" Grid.Column="1" HorizontalAlignment="Left" Margin="10,100,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26"/>
-                        <Label Name="MSILabel" Content="MSI:" HorizontalAlignment="Center" Margin="0,100,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26"/>
-                        <Button Name="ButtonMSI" Content="Browse" Grid.Column="2" HorizontalAlignment="Left" Margin="372,100,0,0" VerticalAlignment="Top" RenderTransformOrigin="-0.748,-0.269" Height="26" Width="70" Grid.ColumnSpan="2"/>
-                        <Button Name="ButtonMSIClear" Content="Clear" Grid.Column="3" HorizontalAlignment="Left" Margin="47,100,0,0" VerticalAlignment="Top" RenderTransformOrigin="-0.748,-0.269" Height="26" Width="70"/>
-                        <TextBox Name="TextBoxAppName" Grid.Column="1" HorizontalAlignment="Left" Margin="12,141,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
-                        <TextBox Name="TextBoxPublisher" Grid.Column="1" HorizontalAlignment="Left" Margin="12,172,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
-                        <TextBox Name="TextBoxVersion" Grid.Column="1" HorizontalAlignment="Left" Margin="12,203,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
-                        <TextBox Name="TextBoxInstallProgram" Grid.Column="1" HorizontalAlignment="Left" Margin="12,234,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
-                        <TextBox Name="TextBoxUnInstallProgram" Grid.Column="1" HorizontalAlignment="Left" Margin="12,266,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
-                        <TextBox Name="TextBoxSourcePath" Grid.Column="1" HorizontalAlignment="Left" Margin="12,298,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
-                        <TextBox Name="TextBoxADGroup" Grid.Column="1" HorizontalAlignment="Left" Margin="12,329,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
-                        <TextBox Name="TextBoxCollection" Grid.Column="1" HorizontalAlignment="Left" Margin="12,360,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
-                        <Label Name="ApplicationNameLabel" Content="Application Name:" HorizontalAlignment="Left" Margin="13,141,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26"/>
-                        <Label Name="PublisherLabel" Content="Publisher:" HorizontalAlignment="Left" Margin="13,172,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26"/>
-                        <Label Name="VersionLabel" Content="Version:" HorizontalAlignment="Left" Margin="13,202,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26"/>
-                        <Label Name="InstallationProgramLabel" Content="Install Program:" HorizontalAlignment="Left" Margin="10,233,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26"/>
-                        <Label Name="UninstallationProgramLabel" Content="Uninstall Program:" HorizontalAlignment="Left" Margin="10,267,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26"/>
-                        <Label Name="ContentSourceLabel" Content="Content Source Path:" HorizontalAlignment="Left" Margin="10,299,0,0" VerticalAlignment="Top" Width="121" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26"/>
-                        <Label Name="ADGroupLabel" Content="AD Group:" HorizontalAlignment="Left" Margin="13,329,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26"/>
-                        <Label Name="CollectionLabel" Content="Collection:" HorizontalAlignment="Left" Margin="13,360,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26"/>
-                        <Label Name="labelTarget" Content="Target:" HorizontalAlignment="Left" Height="30" Margin="13,408,0,0" VerticalAlignment="Top" Width="128" FontWeight="Bold" Grid.RowSpan="2"/>
-                        <RadioButton Name="RadioButtonDevice" Content="Device" HorizontalAlignment="Left" Margin="31,15,0,0" VerticalAlignment="Top" IsChecked="True" Grid.Row="1" Height="14" Width="54" GroupName="Target"/>
-                        <RadioButton Name="RadioButtonUser" Content="User" HorizontalAlignment="Left" Margin="31,9,0,0" VerticalAlignment="Top" Grid.Row="2" Height="15" Width="43" Grid.RowSpan="2" GroupName="Target"/>
-                        <Label Name="labelPurpose" Content="Purpose:" HorizontalAlignment="Left" Height="30" Margin="124,408,0,0" VerticalAlignment="Top" Width="128" FontWeight="Bold" Grid.ColumnSpan="2" Grid.RowSpan="2"/>
-                        <RadioButton Name="RadioButtonRequired" Content="Required" Margin="146,15,71,0" VerticalAlignment="Top" Grid.Row="1" Height="14" IsChecked="True" GroupName="Purpose" Grid.ColumnSpan="2"/>
-                        <RadioButton Name="RadioButtonAvailable" Content="Available" HorizontalAlignment="Left" Margin="146,9,0,0" VerticalAlignment="Top" Grid.Row="2" Height="14" Width="85" GroupName="Purpose" Grid.ColumnSpan="2"/>
-                        <Label Name="labelPurpose_Copy" Content="Options:" HorizontalAlignment="Left" Height="30" Margin="101,408,0,0" VerticalAlignment="Top" Width="128" FontWeight="Bold" Grid.ColumnSpan="2" Grid.RowSpan="2" Grid.Column="1"/>
-                        <CheckBox Name="checkboxInteraction" Content="Allow User to interact" Grid.Column="1" HorizontalAlignment="Left" Margin="126,14,0,0" Grid.Row="1" VerticalAlignment="Top" Height="19" Grid.RowSpan="2" Grid.ColumnSpan="2"/>
-                        <CheckBox Name="CheckBoxCreateCollection" Content="Create Collection" Grid.Column="1" HorizontalAlignment="Left" Margin="126,8,0,0" Grid.Row="2" VerticalAlignment="Top" Height="18" Grid.RowSpan="2" Grid.ColumnSpan="2"/>
-                        <CheckBox Name="CheckBoxCreateADGroup" Content="Create AD Group" Grid.Column="1" HorizontalAlignment="Left" Margin="126,7,0,0" Grid.Row="3" VerticalAlignment="Top" Height="18" Grid.ColumnSpan="2"/>
-                        <CheckBox Name="CheckBoxDistributeContent" Content="Distribute Content" Grid.Column="2" HorizontalAlignment="Left" Margin="127,14,0,0" Grid.Row="1" VerticalAlignment="Top" Height="19" Grid.RowSpan="2"/>
-                        <CheckBox Name="CheckBoxCreateDeployment" Content="Create Deployment" Grid.Column="2" HorizontalAlignment="Left" Margin="126,7,0,0" Grid.Row="3" VerticalAlignment="Top" Height="18"/>
-                        <Label Name="labelProduct" Content="Create In:" HorizontalAlignment="Left" Height="30" Margin="259,408,0,0" VerticalAlignment="Top" Width="128" FontWeight="Bold" Grid.RowSpan="2" Grid.Column="2"/>
-                        <CheckBox Name="checkboxCreateInConfigMgr" Content="ConfigMgr" Grid.Column="2" HorizontalAlignment="Left" Margin="284,14,0,0" Grid.Row="1" VerticalAlignment="Top" Height="19" Grid.RowSpan="2"/>
-                        <CheckBox Name="checkboxCreateInIntune" Content="Intune" Grid.Column="2" HorizontalAlignment="Left" Margin="284,8,0,0" Grid.Row="2" VerticalAlignment="Top" Height="18" Grid.RowSpan="2"/>
-                        <Button Name="ButtonCreate" Content="Create" Grid.Column="3" HorizontalAlignment="Left" Margin="7,14,0,0" Grid.Row="1" VerticalAlignment="Top" Height="37" Grid.RowSpan="2" Width="108" FontWeight="Bold" FontSize="16" Background="#FFD6D3C4"/>
-                        <Label Name="LabelDescription" Content="Create Application in Microsoft Endpoint Manager - ConfigMgr and Intune" HorizontalAlignment="Left" Margin="20,10,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" Width="797" FontStyle="Italic"/>
-                        <Label Name="LabelOutput" HorizontalAlignment="Left" Margin="20,41,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" Width="797" FontStyle="Italic" Background="Transparent" Foreground="#FFFF0303" Visibility="Hidden">
+                        <TextBox Name="TextBoxDDPackages" Grid.Column="5" HorizontalAlignment="Left" Margin="10,66,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" IsEnabled="False"/>
+                        <ComboBox Name="DDPackages" Grid.Column="5" HorizontalAlignment="Left" Margin="10,68,0,0" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="22"/>
+                        <Label Name="labelDDPackages" Content="Applicationfolder:" HorizontalAlignment="Center" Margin="0,66,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="3" Grid.Column="1"/>
+                        <TextBox Name="TextBoxMSIPackage" Grid.Column="5" HorizontalAlignment="Left" Margin="10,100,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26"/>
+                        <Label Name="MSILabel" Content="MSI:" HorizontalAlignment="Center" Margin="0,100,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="3" Grid.Column="1"/>
+                        <Button Name="ButtonMSI" Content="Browse" Grid.Column="6" HorizontalAlignment="Left" Margin="372,100,0,0" VerticalAlignment="Top" RenderTransformOrigin="-0.748,-0.269" Height="26" Width="70" Grid.ColumnSpan="2"/>
+                        <Button Name="ButtonMSIClear" Content="Clear" Grid.Column="7" HorizontalAlignment="Left" Margin="47,100,0,0" VerticalAlignment="Top" RenderTransformOrigin="-0.748,-0.269" Height="26" Width="70"/>
+                        <TextBox Name="TextBoxAppName" Grid.Column="5" HorizontalAlignment="Left" Margin="12,141,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
+                        <TextBox Name="TextBoxPublisher" Grid.Column="5" HorizontalAlignment="Left" Margin="12,172,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
+                        <TextBox Name="TextBoxVersion" Grid.Column="5" HorizontalAlignment="Left" Margin="12,203,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
+                        <TextBox Name="TextBoxInstallProgram" Grid.Column="5" HorizontalAlignment="Left" Margin="12,234,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
+                        <TextBox Name="TextBoxUnInstallProgram" Grid.Column="5" HorizontalAlignment="Left" Margin="12,266,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
+                        <TextBox Name="TextBoxSourcePath" Grid.Column="5" HorizontalAlignment="Left" Margin="12,298,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
+                        <TextBox Name="TextBoxADGroup" Grid.Column="5" HorizontalAlignment="Left" Margin="12,329,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
+                        <TextBox Name="TextBoxCollection" Grid.Column="5" HorizontalAlignment="Left" Margin="12,360,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Grid.ColumnSpan="2" Height="26" RenderTransformOrigin="0.483,0.524"/>
+                        <Label Name="ApplicationNameLabel" Content="Application Name:" HorizontalAlignment="Left" Margin="1,141,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="3" Grid.Column="1"/>
+                        <Label Name="PublisherLabel" Content="Publisher:" HorizontalAlignment="Left" Margin="1,172,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="3" Grid.Column="1"/>
+                        <Label Name="VersionLabel" Content="Version:" HorizontalAlignment="Left" Margin="1,202,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="3" Grid.Column="1"/>
+                        <Label Name="InstallationProgramLabel" Content="Install Program:" HorizontalAlignment="Left" Margin="10,233,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="4"/>
+                        <Label Name="UninstallationProgramLabel" Content="Uninstall Program:" HorizontalAlignment="Left" Margin="10,267,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="4"/>
+                        <Label Name="ContentSourceLabel" Content="Content Source Path:" HorizontalAlignment="Left" Margin="10,299,0,0" VerticalAlignment="Top" Width="121" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="4"/>
+                        <Label Name="ADGroupLabel" Content="AD Group:" HorizontalAlignment="Left" Margin="1,329,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="3" Grid.Column="1"/>
+                        <Label Name="CollectionLabel" Content="Collection:" HorizontalAlignment="Left" Margin="1,360,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="3" Grid.Column="1"/>
+                        <Label Name="LabelDescription" Content="Create Application in Microsoft Endpoint Manager - ConfigMgr and Intune" HorizontalAlignment="Left" Margin="1,10,0,0" VerticalAlignment="Top" Grid.ColumnSpan="6" Width="797" FontStyle="Italic" Grid.Column="2"/>
+                        <Label Name="LabelOutput" HorizontalAlignment="Left" Margin="1,41,0,0" VerticalAlignment="Top" Grid.ColumnSpan="6" Width="797" FontStyle="Italic" Background="Transparent" Foreground="#FFFF0303" Visibility="Hidden" Grid.Column="2">
 
                         </Label>
-                        <Label Name="LabelSelectDP" Content="Select DP-Groups..." HorizontalAlignment="Left" Margin="147,0,0,0" VerticalAlignment="Center" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.Column="2" Grid.Row="2" FontSize="10" Foreground="#FF172AEA"/>
-                        <Button Name="ButtonBrowseApp" Content="Browse" Grid.Column="2" HorizontalAlignment="Left" Margin="372,66,0,0" VerticalAlignment="Top" RenderTransformOrigin="-0.748,-0.269" Height="26" Width="145" Grid.ColumnSpan="2"/>
+                        <Button Name="ButtonBrowseApp" Content="Browse" Grid.Column="6" HorizontalAlignment="Left" Margin="372,66,0,0" VerticalAlignment="Top" RenderTransformOrigin="-0.748,-0.269" Height="26" Width="145" Grid.ColumnSpan="2"/>
 
                     </Grid>
                 </Grid>
             </TabItem>
-            <TabItem Header="Winget" IsEnabled="True">
-                <Grid Background="White" Height="530" Margin="0,0,-4,0">
+            <TabItem Header="Winget" Name="TabCreateWinget" IsEnabled="True">
+                <Grid Background="White" Height="617" Margin="0,0,-4,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="429*"/>
                         <RowDefinition Height="29*"/>
@@ -127,26 +123,12 @@
                     <TextBox Name="TextBoxWingetSearch" Grid.Column="1" HorizontalAlignment="Left" Margin="10,49,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="445" Grid.ColumnSpan="2" Height="26"/>
                     <Label Name="LabelWingetSearch" Content="Search:" HorizontalAlignment="Left" Margin="39,49,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" Grid.ColumnSpan="2"/>
                     <Button Name="ButtonWingetSearch" Content="Search" Grid.Column="2" HorizontalAlignment="Left" Margin="327,49,0,0" VerticalAlignment="Top" RenderTransformOrigin="-0.748,-0.269" Height="26" Width="70" AutomationProperties.AccessKey="" IsDefault="True"/>
-                    <Label Name="labelTarget1" Content="Target:" HorizontalAlignment="Left" Height="30" Margin="13,408,0,0" VerticalAlignment="Top" Width="128" FontWeight="Bold" Grid.RowSpan="2"/>
-                    <RadioButton Name="RadioButtonDevice1" Content="Device" HorizontalAlignment="Left" Margin="31,15,0,0" VerticalAlignment="Top" IsChecked="True" Grid.Row="1" Height="14" Width="54" GroupName="Target"/>
-                    <RadioButton Name="RadioButtonUser1" Content="User" HorizontalAlignment="Left" Margin="31,9,0,0" VerticalAlignment="Top" Grid.Row="2" Height="15" Width="43" Grid.RowSpan="2" GroupName="Target"/>
-                    <Label Name="labelPurpose1" Content="Purpose:" HorizontalAlignment="Left" Height="30" Margin="124,408,0,0" VerticalAlignment="Top" Width="128" FontWeight="Bold" Grid.ColumnSpan="2" Grid.RowSpan="2"/>
-                    <RadioButton Name="RadioButtonRequired1" Content="Required" Margin="146,15,71,0" VerticalAlignment="Top" Grid.Row="1" Height="14" IsChecked="True" GroupName="Purpose" Grid.ColumnSpan="2"/>
-                    <RadioButton Name="RadioButtonAvailable1" Content="Available" HorizontalAlignment="Left" Margin="146,9,0,0" VerticalAlignment="Top" Grid.Row="2" Height="14" Width="85" GroupName="Purpose" Grid.ColumnSpan="2"/>
-                    <Label Name="labelPurpose_Copy1" Content="Options:" HorizontalAlignment="Left" Height="30" Margin="101,408,0,0" VerticalAlignment="Top" Width="128" FontWeight="Bold" Grid.ColumnSpan="2" Grid.RowSpan="2" Grid.Column="1"/>
-                    <CheckBox Name="checkboxInteraction1" Content="Allow User to interact" Grid.Column="1" HorizontalAlignment="Left" Margin="126,14,0,0" Grid.Row="1" VerticalAlignment="Top" Height="19" Grid.RowSpan="2" Grid.ColumnSpan="2"/>
-                    <CheckBox Name="CheckBoxCreateCollection1" Content="Create Collection" Grid.Column="1" HorizontalAlignment="Left" Margin="126,8,0,0" Grid.Row="2" VerticalAlignment="Top" Height="18" Grid.RowSpan="2" Grid.ColumnSpan="2"/>
-                    <CheckBox Name="CheckBoxCreateADGroup1" Content="Create AD Group" Grid.Column="1" HorizontalAlignment="Left" Margin="126,7,0,0" Grid.Row="3" VerticalAlignment="Top" Height="18" Grid.ColumnSpan="2"/>
-                    <CheckBox Name="CheckBoxCreateDeployment1" Content="Create Deployment" Grid.Column="2" HorizontalAlignment="Left" Margin="120,15,0,0" Grid.Row="1" VerticalAlignment="Top" Height="18" Grid.RowSpan="2"/>
-                    <Label Name="labelProduct1" Content="Create In:" HorizontalAlignment="Left" Height="30" Margin="259,408,0,0" VerticalAlignment="Top" Width="128" FontWeight="Bold" Grid.RowSpan="2" Grid.Column="2"/>
-                    <CheckBox Name="checkboxCreateInConfigMgr1" Content="ConfigMgr" Grid.Column="2" HorizontalAlignment="Left" Margin="284,14,0,0" Grid.Row="1" VerticalAlignment="Top" Height="19" Grid.RowSpan="2"/>
-                    <CheckBox Name="checkboxCreateInIntune1" Content="Intune" Grid.Column="2" HorizontalAlignment="Left" Margin="284,8,0,0" Grid.Row="2" VerticalAlignment="Top" Height="18" Grid.RowSpan="2"/>
-                    <Button Name="ButtonCreateWinGet" Content="Create" Grid.Column="3" HorizontalAlignment="Left" Margin="7,14,0,0" Grid.Row="1" VerticalAlignment="Top" Height="37" Grid.RowSpan="2" Width="108" FontWeight="Bold" FontSize="16" Background="#FFD6D3C4"/>
                     <Label Name="LabelWinGetDescription" Content="Create Winget App in Microsoft Endpoint Manager - ConfigMgr and Intune" HorizontalAlignment="Left" Margin="20,10,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" Width="797" FontStyle="Italic"/>
-                    <Label Name="LabelOutput1" HorizontalAlignment="Left" Margin="20,34,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" Width="797" FontStyle="Italic" Background="Transparent" Foreground="#FFFF0303"/>        
-                    <DataGrid Name="dataGridWinget" Grid.Column="1" Margin="10,87,3,102" Grid.ColumnSpan="2" AutoGenerateColumns="True" IsReadOnly="True">
+                    <Label Name="LabelOutput1" HorizontalAlignment="Left" Margin="20,34,0,0" VerticalAlignment="Top" Grid.ColumnSpan="4" Width="797" FontStyle="Italic" Background="Transparent" Foreground="#FFFF0303"/>
+
+                    <DataGrid Name="dataGridWinget" Grid.Column="1" Margin="10,87,3,202" Grid.ColumnSpan="2" AutoGenerateColumns="True" IsReadOnly="True">
                     </DataGrid>
-                    <TextBox Name="TextBoxWingetPreview" Grid.Column="1" HorizontalAlignment="Left" Margin="10,339,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="542" Grid.ColumnSpan="2" Height="45"/>
+                    <TextBox Name="TextBoxWingetPreview" Grid.Column="1" HorizontalAlignment="Left" Margin="13,321,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="542" Grid.ColumnSpan="2" Height="45" Grid.RowSpan="3"/>
 
                 </Grid>
 
@@ -165,8 +147,8 @@
             <TabItem Header="Application Migration" HorizontalAlignment="Center" Height="22" VerticalAlignment="Center" Width="137" FontWeight="Normal" IsEnabled="False">
                 <Grid Background="#FFE5E5E5"/>
             </TabItem>
-            <TabItem Header="CONFIG" HorizontalAlignment="Center" VerticalAlignment="Bottom" FontWeight="Bold" Margin="0,0,0,1">
-                <Grid Background="White">
+            <TabItem Header="CONFIG" Name="TabConfig" HorizontalAlignment="Center" VerticalAlignment="Bottom" FontWeight="Bold" Margin="0,0,0,1">
+                <Grid Background="White" Height="547">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition/>
                     </Grid.ColumnDefinitions>
@@ -213,7 +195,6 @@
                                         <Button Name="buttonInstallWingetModule" Content="Install Winget integration" HorizontalAlignment="Left" Margin="156,410,0,0" VerticalAlignment="Top" Height="27" Width="200" Foreground="White" Background="#FFA29A9A"/>
 
                                     </Grid>
-                                    
                                 </ScrollViewer>
                             </Grid>
                         </TabItem>
@@ -262,7 +243,7 @@
                                 </ScrollViewer>
                             </Grid>
                         </TabItem>
-                        <TabItem Header="Azure / Intune" HorizontalAlignment="Left" Height="20" VerticalAlignment="Bottom" Width="103" Margin="-1,0,0,0">
+                        <TabItem Header="Azure / Intune" HorizontalAlignment="Left" Width="103" Margin="-1,0,0,0">
                             <Grid Background="White" Margin="0,0,0,-29">
                                 <ScrollViewer Margin="0,0,0,24">
                                     <Grid Height="483" Width="700">
@@ -282,11 +263,12 @@
                                         <Label Name="LabelAADGroupNamePrefix" Content="Pilot AAD-Group:" HorizontalAlignment="Left" Margin="10,239,0,0" VerticalAlignment="Top" Width="146" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" FontWeight="Normal"/>
                                         <Label Name="LabelCleanUpIntuneOutputFolder" Content="CleanUp Output Folder:" HorizontalAlignment="Left" Margin="10,207,0,0" VerticalAlignment="Top" Width="141" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" FontWeight="Normal" FontSize="11"/>
                                         <TextBox Name="TextBoxPilotAADGroup" HorizontalAlignment="Left" Margin="156,239,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Height="26" RenderTransformOrigin="0.483,0.524" FontWeight="Normal" FontSize="14"/>
-                                        <Label Name="LabelPilotAADGroup" Content="AAD GroupName Prefix:" HorizontalAlignment="Left" Margin="10,273,0,0" VerticalAlignment="Top" Width="146" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" FontWeight="Normal"/>
+                                        <Label Name="LabelPilotAADGroup" Content="AAD GroupName Prefi" HorizontalAlignment="Left" Margin="10,273,0,0" VerticalAlignment="Top" Width="146" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" FontWeight="Normal"/>
                                         <Button Name="buttonInstallIntuneModule" Content="Configure Intune integration" HorizontalAlignment="Center" Margin="0,355,0,0" VerticalAlignment="Top" Height="27" Width="250" Foreground="White" Background="#FFA29A9A"/>
                                         <TextBox Name="TextBoxAzApplicationName" HorizontalAlignment="Left" Margin="157,114,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Width="506" Height="26" RenderTransformOrigin="0.483,0.524" FontWeight="Normal" FontSize="14" ToolTip="For Azure authentication a Enterprise Application is required, specify the name for the Application witch will be created" Text="Intune_Cancom_AppManager"/>
                                         <Label Name="LabelAzApplicationName" Content="Azure AppName:" HorizontalAlignment="Left" Margin="11,114,0,0" VerticalAlignment="Top" Width="118" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" FontWeight="Normal" ToolTip="Specify ClientSecret for EnterpriseApplication"/>
-                                        
+                                        <PasswordBox Name="TextBoxClientSecret" HorizontalAlignment="Left" Margin="157,144,0,0" VerticalAlignment="Top" Width="506" Height="26" RenderTransformOrigin="0.483,0.524" FontWeight="Normal" FontSize="14" ToolTip="Example: Username@Tenant.com"/>
+                                        <Label Name="LabelClientSecret" Content="ClientSecret:" HorizontalAlignment="Left" Margin="41,144,0,0" VerticalAlignment="Top" Width="77" AutomationProperties.HelpText="Application to be imported" FontStyle="Normal" Height="26" FontWeight="Normal"/>
                                     </Grid>
                                 </ScrollViewer>
                             </Grid>
@@ -346,10 +328,91 @@
         <Label Name="Header_small" Content="for Microsoft Endpoint Manager" HorizontalAlignment="Left" Height="28" Margin="10,31,0,0" VerticalAlignment="Top" Width="405" FontWeight="Bold" Foreground="#FF474646"/>
         <Button Name="button" Content="Button" HorizontalAlignment="Left" Margin="948,209,0,0" VerticalAlignment="Top" Width="0"/>
         <CheckBox Name="checkBox" Content="CheckBox" HorizontalAlignment="Left" Margin="883,352,0,0" VerticalAlignment="Top"/>
-        <Image Name="CompanyLogo" Margin="750,3,10,520" Height="70" Width="70" Stretch="Fill" Source="/files/logo.png"/>
+        <Image Name="CompanyLogo" Margin="753,3,13,522" Height="80" Width="80" Stretch="Fill" Source="logo.png"/>
 
+        <GroupBox Name="BoxCommonControls" Header="Deployment Options" Margin="10,510,10,-17" Visibility="Visible">
+            <Grid Margin="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <!-- Target -->
+                    <ColumnDefinition Width="*"/>
+                    <!-- Purpose -->
+                    <ColumnDefinition Width="*"/>
+                    <!-- Options -->
+                    <ColumnDefinition Width="*"/>
+                    <!-- Distribution -->
+                    <ColumnDefinition Width="*"/>
+                    <!-- Create In -->
+                    <ColumnDefinition Width="Auto"/>
+                    <!-- Buttons -->
+                </Grid.ColumnDefinitions>
+
+                <!-- Target Column -->
+                <StackPanel Grid.Column="0" VerticalAlignment="Top">
+                    <Label Content="Target:" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <RadioButton Name="RadioButtonDevice" Content="Device" GroupName="Target" Margin="0,2"/>
+                    <RadioButton Name="RadioButtonUser" Content="User" GroupName="Target" Margin="0,2"/>
+                </StackPanel>
+
+                <!-- Purpose Column -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Top">
+                    <Label Content="Purpose:" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <RadioButton Name="RadioButtonRequired" Content="Required" GroupName="Purpose" IsChecked="True" Margin="0,2"/>
+                    <RadioButton Name="RadioButtonAvailable" Content="Available" GroupName="Purpose" Margin="0,2"/>
+                </StackPanel>
+
+                <!-- Options Column -->
+                <StackPanel Grid.Column="2" VerticalAlignment="Top">
+                    <Label Content="Options:" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <CheckBox Name="checkboxInteraction" Content="Allow User to interact" Margin="0,2"/>
+                    <CheckBox Name="CheckBoxCreateCollection" Content="Create Collection" Margin="0,2"/>
+                    <CheckBox Name="CheckBoxCreateADGroup" Content="Create AD Group" Margin="0,2"/>
+                </StackPanel>
+
+                <!-- Distribution Column -->
+                <StackPanel Grid.Column="3" VerticalAlignment="Top">
+                    <Label Content="Distribution:" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <CheckBox Name="CheckBoxDistributeContent" Content="Distribute Content" Margin="0,2"/>
+                    <Label Name="LabelSelectDP" Content="Select DP-Groups..." FontSize="10" Foreground="#FF172AEA" Margin="15,0,0,0"/>
+                    <CheckBox Name="CheckBoxCreateDeployment" Content="Create Deployment" Margin="0,5,0,0"/>
+                </StackPanel>
+
+                <!-- Create In Column -->
+                <StackPanel Grid.Column="4" VerticalAlignment="Top">
+                    <Label Content="Create In:" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <CheckBox Name="checkboxCreateInConfigMgr" Content="ConfigMgr" Margin="0,2"/>
+                    <CheckBox Name="checkboxCreateInIntune" Content="Intune" Margin="0,2"/>
+                </StackPanel>
+
+                <!-- Buttons Column (Aligned top) -->
+                <Grid Grid.Column="5" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,24,10,0" Width="100" Height="36">
+                    <!-- Create WG Button -->
+                    <Button Name="ButtonCreateWinGet"
+                            Content="Create WG"
+                         
+                            Background="#FFE8E4E4"
+                            Foreground="#FF0A0808"
+                            FontWeight="SemiBold"
+                            BorderThickness="0.5"
+                            Visibility="Collapsed" />
+
+                    <!-- Create Button (Default visible) -->
+                    <Button Name="ButtonCreate"
+                            Content="CREATE"
+                            Background="#FFE8E4E4"
+                            Foreground="#FF0A0808"
+                            FontWeight="SemiBold"
+                            BorderThickness="0.5"
+                            Visibility="Visible" >
+                   
+                    </Button>
+                </Grid>
+            </Grid>
+        </GroupBox>
     </Grid>
 </Window>
+
+
 
 
 
@@ -1301,7 +1364,7 @@ function Get-WingetPackageDetails {
     return [PSCustomObject]$info
 }
 
-function Get-WingetYamlContent {
+function Get-WingetInstallContent {
     param (
         [Parameter(Mandatory = $true)][string]$PackageId,
         [Parameter(Mandatory = $true)][string]$PackageVersion
@@ -1326,6 +1389,34 @@ function Get-WingetYamlContent {
         return $null
     }
 }
+
+function Get-WingetLocaleContent {
+    param (
+        [Parameter(Mandatory = $true)][string]$PackageId,
+        [Parameter(Mandatory = $true)][string]$PackageVersion,
+        [string]$Locale = "en-US"
+    )
+
+    try {
+        $firstLetter = $PackageId.Substring(0,1).ToLower()
+        $repoPath = "$($PackageId.Replace('.', '/'))"
+        $url = "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/$firstLetter/$repoPath/$PackageVersion/$PackageId.locale.$Locale.yaml"
+
+        $tmpPath = Join-Path $env:TEMP "$PackageId.locale.$Locale.yaml"
+
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Downloading locale YAML for $PackageId..."
+        Invoke-WebRequest -Uri $url -OutFile $tmpPath -UseBasicParsing -ErrorAction Stop
+
+        Import-Module powershell-yaml -ErrorAction Stop
+
+        return Get-Content $tmpPath -Raw | ConvertFrom-Yaml
+    }
+    catch {
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "⚠️ Failed to fetch or parse locale YAML: $($_.Exception.Message)" -Severity 2
+        return $null
+    }
+}
+
 
 function Get-WingetYamlValue {
     param (
@@ -1542,6 +1633,18 @@ function Install-IntuneModule {
 }
 
 function Install-WingetClient {
+    # Remove Cobalt module if installed to prevent conflicts
+    if (Get-Module -ListAvailable -Name "Cobalt") {
+        Write-Warning "⚠️ Conflicting module 'Cobalt' detected. Uninstalling to prevent issues with official Winget module..."
+        try {
+            Uninstall-Module -Name "Cobalt" -AllVersions -Force -ErrorAction Stop
+            Write-Host "✅ Cobalt module uninstalled successfully." -ForegroundColor Yellow
+        }
+        catch {
+            Write-Warning "❌ Failed to uninstall Cobalt module: $($_.Exception.Message)"
+        }
+    }
+
     try {
         # Check and install/update WinGet PowerShell module
         CheckAndUpdate-Module -ModuleName "Microsoft.WinGet.Client"
@@ -1562,6 +1665,7 @@ function Install-WingetClient {
         Write-Warning "❌ Failed to install or update powershell-yaml module: $($_.Exception.Message)"
     }
 }
+
 
 
 function CheckAndUpdate-Module {
@@ -2195,6 +2299,7 @@ function Load-Form {
 function Validate-Form {
     if ($checkboxCreateInConfigMgr.IsChecked) {
         try {
+            Import-Module(Join-Path $(Split-Path $env:SMS_ADMIN_UI_PATH) ConfigurationManager.psd1) | Out-Null
             Set-Location($iniFile.ConfigMgr.SiteCode + ":")
         }
         catch {
@@ -2234,6 +2339,7 @@ function Validate-Form {
     $ContentSourcePath = $TextBoxSourcePath.Text
     $InstallCollectionName = $TextBoxInstallCollection.Text
     $ADGroupName = $TextBoxADGroup.Text
+    $CollectionName = $TextBoxCollection.Text
 
     # Clear the error providers
   
@@ -2256,10 +2362,10 @@ function Validate-Form {
         write-log -message $logtext -type 3
     }
   #>
-    
+    <#
     if ($checkboxCreateInConfigMgr.IsChecked) {
         # Check if a collection name is specified, but the Create Collection checkbox is unchecked, and the collection does not already exist
-        if ($TextBoxCollection.Text.Length -gt 0 -and (Check-CollectionExist $CollectionName) -eq $false -and $CheckBoxCreateCollection.IsChecked -eq $false) {
+        if ($CollectionName.Length -gt 0 -and (Check-CollectionExist $CollectionName) -eq $false -and $CheckBoxCreateCollection.IsChecked -eq $false) {
             $OkToProceed = $false
             $logtext = "The collection $CollectionName does not exist. Please clear the collection name or change it to the name of an existing collection, or check the Create Collection checkbox to create a new collection."
             $LabelOutput.Content = $logtext
@@ -2267,7 +2373,7 @@ function Validate-Form {
             write-log -message $logtext -type 3
         }
     }
-
+    #>
 
     <# # Check if we try to create a new AD-group with the same name as one that already exists
     if ($TextBoxADGroup.Text.Length -gt 0 -and (Check-ADGroupExist $ADGroupName) -eq $true -and $CheckBoxCreateADGroup.IsChecked -eq $true)
@@ -2710,6 +2816,7 @@ function CheckBoxDistributeContentChanged {
 # Function to control actions when the create deployment checkbox is checked or unchecked
 function CheckBoxCreateDeploymentChanged {
     # If a deployment is selected to be created, then also create a collection and distribute the content
+ 
     if ($CheckboxCreateDeployment.IsChecked) {
         $CheckBoxCreateCollection.IsChecked = $true
         $CheckBoxDistributeContent.IsChecked = $true
@@ -2717,8 +2824,8 @@ function CheckBoxCreateDeploymentChanged {
         $RadioButtonRequired.IsEnabled = $true
     }
     else {
-        $RadioButtonAvailable.IsEnabled = $false
-        $RadioButtonRequired.IsEnabled = $false
+        #$RadioButtonAvailable.IsEnabled = $false
+        #$RadioButtonRequired.IsEnabled = $false
     }
 }
 
@@ -3054,6 +3161,7 @@ function CreateCMCollection {
         [string]$CollectionType,
         [string]$CollectionFolderName,
         [string]$CollectionUninstallFolderName,
+        [string]$ApplicationtestCollectionname,
         [switch]$ADGroup
             
     )
@@ -3143,16 +3251,20 @@ function CreateCMCollection {
             }
 
             #Create Test Collection if not exists
-            if ($ApplicationtestCollectionname.Text.Length -eq 0) {
-                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Evaluate Test-Collection $($ApplicationtestCollectionname)"
-                if (!(Get-CMDeviceCollection -Name  $ApplicationtestCollectionname)) {
+            if ($ApplicationtestCollectionname.Length -eq 0) {
+                $message = "Evaluate Test-Collection $ApplicationtestCollectionname"
+                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+                Write-Host $message
+
+                if (!(Get-CMDeviceCollection -Name $ApplicationtestCollectionname)) {
                     $ApplicationtestCollection = New-CMDeviceCollection -Name $ApplicationtestCollectionname -LimitingCollectionName $DeviceLimitingCollection -RefreshType Periodic -RefreshSchedule $Schedule
                 }
             }
+
 			
             # If an AD group was specified, add a query membership rule based on that group
             if ($ADGroup) {
-                Start-ProgressBar 
+         
                 Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Create AD-Group is selected, add Query Rule..."
                 Add-CMDeviceCollectionQueryMembershipRule -Collection $AppCollection -QueryExpression "select *  from  SMS_R_System where SMS_R_System.SystemGroupName = ""$DomainNetbiosName\\$ADGroupName""" -RuleName "Members of AD group $ADGroupName"
                 Add-CMDeviceCollectionQueryMembershipRule -Collection $AppUninstallCollection -QueryExpression "select *  from  SMS_R_System where SMS_R_System.SystemGroupName = ""$DomainNetbiosName\\$ADGroupUninstallName""" -RuleName "Members of AD group $ADGroupUninstallName"
@@ -3421,12 +3533,12 @@ function DistributeContent {
         }
         else {
             $DPGroup = $iniFile.ConfigMgr.DPGroup
-            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Distribute Content to $($DPGroup)"
+            $message = "Distribute Content to $($DPGroup)"
+            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+            Write-Host "$message"
             Start-CMContentDistribution -ApplicationName $ApplicationName -DistributionPointGroupName $iniFile.ConfigMgr.DPGroup
         }
                 
-		
-        Write-Host "$message" -NoNewline; Write-Host $DPGroup -ForegroundColor Green
         write-log "$message to $DPGroup" -type 1
 				
     }
@@ -3502,358 +3614,6 @@ function CreateADGroup {
 }
 
 
-
-# Function to control actions when clicking on button 'Create'. All logic to create the application, the deployment type, and other objects such as collection and AD-group, is in this function.
-function ButtonCreateClick {
-
-    $ProgressbarSteps = 100 / 40
-    $ProgressbarCurrent = 0
-
-    $MSIFile = $TextBoxMSIPackage.Text
-    $AppVFile = $TextBoxAppVPackage.Text
-    $ApplicationVersion = $TextBoxVersion.Text
-
-    # wenn es sich um eine Standardapp handelt, dann lege die App und Collection im Ordner für Standardapps an.
-    if ($CheckboxStandardapp.IsChecked -eq $true) {
-        $CollectionFolderName = $Standardapplicationfoldername
-        $ApplicationFolderName = $Standardapplicationfoldername
-    }
-
-    if ($ApplicationVersion -ne "" -and $ApplicationVersion -ne $null) {
-        $ApplicationName = $TextBoxAppName.Text + " " + $ApplicationVersion
-    }
-    else {
-        $ApplicationName = $TextBoxAppName.Text
-    }
-    $Publisher = $TextBoxPublisher.Text
-    $InstallationProgram = $TextBoxInstallProgram.Text
-    $UninstallationProgram = $TextBoxUnInstallProgram.Text
-    $ContentSourcePath = $TextBoxSourcePath.Text
-    $CollectionName = $TextBoxCollection.Text
-    $CollectionNameUninstall = $CollectionName + " - Uninstall"
-    $ADGroupName = $TextBoxADGroup.Text
-    $ADGroupDescription = "Members of this group will be targeted for deployment of " + $TextBoxAppName.Text + " in ConfigMgr"
-    $Appfullname = $TextBoxAppName.Text + " " + $TextBoxVersion.Text
-
-
-    #Get MSI Informations for DetectionMethod
-    if ($TextBoxMSIPackage.Text.Length -gt 0) {
-        $ProductCode = Get-MsiFileInformation -Path $MSIFile -Property ProductCode
-        $ProductCode = [GUID]$ProductCode[3]
-        [string]$ProductVersion = Get-MsiFileInformation -Path $MSIFile -Property ProductVersion
-        $ProductVersion = $ProductVersion.Trim()
-       
-    }
-
-    # Check if deployment purpose is Available or Required
-    if ($RadioButtonRequired.IsChecked) {
-        $DeployPurpose = "Required"
-    }
-    if ($RadioButtonAvailable.IsChecked) {
-        $DeployPurpose = "Available"
-    }
-
-    $OkToProceed = Validate-Form
-
-
-    # Check if ok to proceed
-    if ($OkToProceed) {
-        # Show the progress bar
-        $ProgressBar = New-ProgressBar
-        Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create Application" -CurrentOperation "Starting Object creation..."
-       
-       
-        if ($checkboxCreateInConfigMgr.IsChecked) {
-
-            try {
-                Import-Module(Join-Path $(Split-Path $env:SMS_ADMIN_UI_PATH) ConfigurationManager.psd1) | Out-Null
-                Set-Location($iniFile.ConfigMgr.SiteCode + ":")
-                $sccmloc = get-location
-                $ConfigMgrConnect = $true
-            }
-            catch {
-                $Message = "no Connection to ConfigMgr Provider established..."
-                #If no Connection to ConfigMgr Uncheck and Disable ConfigMgr Checkbox
-                $ConfigMgrConnect = $false
-                $checkboxCreateInConfigMgr.IsChecked = $false
-                $checkboxCreateInConfigMgr.IsEnabled = $false
-                $CheckBoxCreateCollection.IsChecked = $false
-                $CheckBoxCreateCollection.IsEnabled = $false
-                $CheckBoxDistributeContent.IsChecked = $false
-                $CheckBoxDistributeContent.IsEnabled = $false
-                $TextBoxCollection.IsEnabled = $false
-                $TextBoxCollection.Text = $Message
-                $LabelOutput.Content = $Message
-                Write-Host $Message -ForegroundColor DarkYellow  
-            }
-       
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            # ++   Application
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            
-            CreateCMApplication -ApplicationName $ApplicationName -Publisher $Publisher -Appfullname $Appfullname -ApplicationVersion $ApplicationVersion -ApplicationFolderName $ApplicationFolderName
-
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            # ++   Collections
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-		    
-            if ($CheckBoxCreateCollection.IsChecked) {
-
-                if ($RadioButtonUser.IsChecked) {
-                    $CollectionType = "User"
-                }
-                else {
-                    $CollectionType = "Device"
-                }
-
-                if ($CheckBoxCreateADGroup.IsChecked) {
-                    $ADGroup = $true
-                }
-                else {
-                    $ADGroup = $false
-
-                }
-
-               
-		    
-                CreateCMCollection -CollectionName $CollectionName -CollectionNameUninstall $CollectionNameUninstall -CollectionType $CollectionType -CollectionFolderName $($TextBoxCollectionFolderName.Text) -CollectionUninstallFolderName $($TextBoxCollectionUninstallFolderName.Text) -ADGroup:$ADGroup
-            }
-
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            # ++   DEPLOYMENT TYPE
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-            if ($TextBoxMSIPackage.Text.Length -gt 1) {
-                $DetectionType = "MSI"
-            }
-            else {
-                $DetectionType = "Script"
-                $DetectionMethod = 'if (Test-Path C:\DummyDetectionMethod) {Write-Host "IMPORTANT! This detection method does not work. You must manually change it."}'
-            }
-
-            if ($CheckboxInteraction.IsChecked -eq $true) { 
-                $UserInteraction = $true
-            }
-
-
-            CreateCMDeploymentType -ApplicationName $ApplicationName -InstallationProgram $($TextBoxInstallProgram.Text) -UnInstallationProgram $($TextBoxUnInstallProgram.Text) -ContentSourcePath $TextBoxSourcePath.Text -DetectionType $DetectionType -DetectionMethod $DetectionMethod -ProductCode $ProductCode -ProductVersion $ProductVersion -Userinteraction:$UserInteraction -RunInstallAs32Bit:$RunInstallAs32Bit -AllowFallbackSourceLocation:$AllowFallbackSourceLocation -DownloadOnSlowNetwork:$DownloadOnSlowNetwork
-
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            # ++   Distribute Content
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            if ($CheckBoxDistributeContent.IsChecked) {
-                DistributeContent -ApplicationName $ApplicationName
-            } # END Distribute Content
-
-
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-            # ++   Deployments
-            # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-			
-            # Deploy the application
-            if ($CheckBoxCreateDeployment.IsChecked) {
-                New-CMApplicationDeployment -CollectionName $CollectionName -Name $ApplicationName -DeployPurpose $DeployPurpose 
-				
-                $message = "Created $DeployPurpose deployment for $ApplicationName to collection $CollectionName"
-                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-                Write-Host $message -ForegroundColor Green
-                write-log $message -type 1
-
-			
-                # Deploy the application UNINSTALL
-                New-CMApplicationDeployment -CollectionName $CollectionNameUninstall -Name $ApplicationName -DeployPurpose Required -DeployAction Uninstall 
-                $message = "Created $DeployPurpose UNINSTALL deployment for $ApplicationName to collection $CollectionName"
-                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-                Write-Host $message -ForegroundColor Green
-                write-log $message -type 1				
-
-    
-                # Deploy an Available Deployment for testing directly after importing
-                if ($ApplicationtestCollectionname.Text.Length -eq 0) {
-                    New-CMApplicationDeployment -CollectionName $ApplicationtestCollectionname -Name $ApplicationName -DeployPurpose Available  -DeployAction Install 
-                    $message = "Created available Test deployment for $ApplicationName to collection $ApplicationtestCollectionname"
-                    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-                    Write-Host $message -ForegroundColor Green
-                    write-log $message -type 1		
-                }		
-            }
-            
-            if ($TextBoxMSIPackage.Text.Length -eq 0) {
-                $message = "IMPORTANT! Remember to manually modify the detection method afterwards."
-                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-                Write-Host $message -ForegroundColor Yellow
-            }
-
-            #Return from SiteCode Drive to initial Drive
-            set-location $driveloc
-
-
-        } #End ConfigMg
-
-        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        # ++   AD-Groups
-        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-	        
-		
-
-        if ($CheckBoxCreateADGroup.IsChecked) {
-            $OUPath = $DeviceOUPath
-
-            CreateADGroup -ADGroupName $CreateADGroup -OUPath $OUPath -ADGroupDescription $ADGroupDescription -ADGroupNamePrefix $ADGroupNamePrefix -ADUninstallGroupNamePrefix $ADUninstallGroupNamePrefix
-
-        }
-		
-
-        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        # ++   Intune
-        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-	        
-        # Create Application in Intune
-       
-        if ($checkboxCreateInIntune.IsChecked) {
-            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Start creating Intune Application"
-            if (-not (Connect-Azure -User $AADUser)) {
-                Write-Host "Failed to connect to Azure or Intune. Exiting..."
-                Start-ProgressBar -ProgressBar $ProgressBar -Activity "Failed to connect to Intune" -PercentComplete "0" -CurrentOperation "Connection failed. Please configure Intune integration and try again."
-                return
-            }
-            #Create Intune App
-            $IntuneApp = Create-IntuneApp -Publisher $Publisher -DisplayName $ApplicationName -ContentSourcePath $ContentSourcePath -InstallationProgram $InstallationProgram -UninstallationProgram $UninstallationProgram
-
-            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "$ApplicationName successfully created"
-
-            if ($CheckBoxCreateDeployment.IsChecked) {
-                $message = "Create AAD Group $($ApplicationName)-Install"
-                Write-host $message
-                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-                #Create INSTALL AAD Group
-                $AADInstalllAppGroup = Create-AADGroup -DisplayName "$($AADGroupNamePrefix)$($ApplicationName)-Install" -Description "AutoGenerated Group by <Cancom Application Manager> for $($ApplicationName) deployment"
-                [string]$AppID = $IntuneApp.id
-
-
-                #Add Assignment to INSTALL Application Group
-                try {
-                    Add-IntuneWin32AppAssignmentGroup -Include -ID $AppID -GroupID $($AADInstalllAppGroup.Id) -Intent $DeployPurpose -Notification "showAll"
-                    $message = "Succesfully created App assignment"
-                    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-                    Write-Host $message -ForegroundColor Green
-                }
-                catch {
-                    $message = "Error: Failed to create App assignment"
-                    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message -Severity 3
-                    Write-Host $message -ForegroundColor Red
-                }
-
-                #Add Assignment to UNINSTALL Application Group
-                if ($TextBoxUnInstallProgram.Text.Length -gt 0) {
-                    #Create UNINSTALL AAD Group
-                    $AADUninstalllAppGroup = Create-AADGroup -DisplayName "$($AADGroupNamePrefix)$($ApplicationName)-Uninstall" -Description "AutoGenerated Group by <Kapsch Application Manager> for $($ApplicationName) Uninstall deployment"
-                    try {
-                        Add-IntuneWin32AppAssignmentGroup -Include -ID $AppID -GroupID $($AADUninstalllAppGroup.Id) -Intent "uninstall" -Notification "showAll"
-                        $message = "Succesfully created App-Uninstall assignment"
-                        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-                        Write-Host $message -ForegroundColor Green
-                    }
-                    catch {
-                        $message = "Error: Failed to create App Uninstall assignment"
-                        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message -Severity 3
-                        Write-Host $message -ForegroundColor Red
-                    }
-                }
-
-                #Add Assignment to TEST Application Group
-                    
-                if ($PilotAADGroup) {
-                    #Create and verify AAD Group
-                    $AADPilotAppGroup = Create-AADGroup -DisplayName "$($AADGroupNamePrefix)$PilotAADGroup" -Description "AutoGenerated Group by <Kapsch Application Manager> for Application Deployment Tests"
-                    try {
-                        Add-IntuneWin32AppAssignmentGroup -Include -ID $AppID -GroupID $($AADPilotAppGroup.Id) -Intent "available" -Notification "showAll"
-                        $message = "Succesfully created App assignment for TestGroup $($PilotAADGroup)"
-                        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-                        Write-Host $message -ForegroundColor Green
-                    }
-                    catch {
-                        $message = "Error: Failed to create Test-Group assignment"
-                        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message -Severity 3
-                        Write-Host $message -ForegroundColor Red
-                    }
-                }
-            }
-
-        }
-        #END Create Intune / AAD Objects if Checkbox is selected
-
- 
-        if ($SWMappingenabled -eq $true) {
-            ########
-            # Eintrag des Imports in die Katalogtabelle
-            ########
-
-            # Prüfe ob im Katalog bereits ein Eintrag mit dieser AD Gruppe vorhanden.
-
-            $ADgrs = query-SQLSWMAP -querytext "select * from $SWProductTable where ADGruppe = '$($TextBoxADGroup.text)'" -DBname $SWMapDBName
-
-            if (!($ADgrs)) {            
-                try {
-                    write-host "-SWPName $($TextBoxAppName.Text) -SWPVersion $($TextBoxVersion.Text) -SWInstallmethod SCCM -SWPOwner ORF\Schrenk -SWPADGroup $($TextBoxADGroup.text) -catalogID $($TextboxSWCatalogID.text)"
-                    Insert-SQLSWProduct -SWPName $($TextBoxAppName.Text) -SWPVersion $($TextBoxVersion.Text) -SWInstallmethod "SCCM" -SWPOwner "ORF\Schrenk" -SWPADGroup $($TextBoxADGroup.text) -CatalogID $($TextBoxSWCatalogID.text)
-                    Write-Host "Successfully created entry in SoftwareProductCatalog-Table" -ForegroundColor Green 
-                    write-log "Successfully created entry in SoftwareProductCatalog-Table" -type 1
-                }
-                catch {
-                    Write-Host "Error while creating Entry in SoftwareProductCatalog-Table" -ForegroundColor red -NoNewline; Write-Host " Error: " -NoNewline; Write-Host $_.exception.message
-                    write-log "Error while creating Entry in SoftwareProductCatalog-Table Error: $($_.exception.message)" -type 3
-                }		 
-            }
-            else {
-                Write-Host "AdGroup already in SoftwareProductCatalog-Table, skipping Inserting a new Product" -ForegroundColor Yellow 
-                write-log "AdGroup already in SoftwareProductCatalog-Table, skipping Inserting a new Product" -type 1
-            }
-            $ProgressBar1.PerformStep()
-        }
-
-
-        # Successfully Created Application
-        $message = "SUCCESS: Created Application!"
-        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-        Write-Host $message -ForegroundColor Green
-        write-log $message -type 1
-        Start-Sleep 1
-
-        Close-ProgressBar $ProgressBar
-        
-        #
-        # Send Mail if Mailserver is filled
-        #
-
-        if ($mailserver -ne "") {
-            $mailto = $mailrecipients
-            $subjecttext = "Paket " + $TextBoxAppName.Text + " Version: " + $TextBoxVersion.Text + " wurde importiert"
-            $bodytext = "<b>Paket:</b> " + $TextBoxAppName.Text + "<br><b>User:</b>" + $env:USERNAME
-            Send-MailMessage -SmtpServer $mailserver -From $mailfrom -Subject $subjecttext -Body $bodytext -BodyAsHtml -To $mailto
-        }
-        
-        if ($showsummaryfile -eq $true) {
-            #New-Item -ItemType Directory -Force -Path ($Scriptpath + "\packageinfos\")
-            write-log -message "Open Logfile $($logfile)" -type 1
-            Write-Host "Open Logfile $($logfile)"  -ForegroundColor green
-            if (Test-Path $logfile) {
-                Write-Host "Path exists, opening log file..." -ForegroundColor green
-                Invoke-Item $logfile
-            }
-            else {
-                Write-Host "Path does not exist or cannot be accessed: $logfile" -ForegroundColor red
-            }
-        }
-
-
-         
- 
-        Load-Form
-    }
-}
-
 function Get-GlobalDeploymentSettings {
     return @{
         CreateInConfigMgr           = $checkboxCreateInConfigMgr.IsChecked
@@ -3861,10 +3621,12 @@ function Get-GlobalDeploymentSettings {
         CreateCollection            = $CheckBoxCreateCollection.IsChecked
         CreateADGroup               = $CheckBoxCreateADGroup.IsChecked
         CollectionType              = if ($RadioButtonUser.IsChecked) { "User" } else { "Device" }
+        CollectionFolderName        = $CollectionFolderName
+        CollectionUninstallFolderName        = $CollectionUninstallFolderName
         UserInteraction             = $CheckboxInteraction.IsChecked
         DistributeContent           = $CheckBoxDistributeContent.IsChecked
         CreateDeployment            = $CheckBoxCreateDeployment.IsChecked
-        ApplicationtestCollectionname = $ApplicationtestCollectionname.Text
+        ApplicationtestCollectionname = $ApplicationtestCollectionname
         RunInstallAs32Bit           = $RunInstallAs32Bit
         AllowFallbackSourceLocation = $AllowFallbackSourceLocation
         DownloadOnSlowNetwork       = $DownloadOnSlowNetwork
@@ -3883,8 +3645,7 @@ function Get-GlobalDeploymentSettings {
         PilotAADGroup               = $PilotAADGroup
         DeviceOUPath                = $DeviceOUPath
         OUPath                      = $DeviceOUPath
-        DetectionType               = if ($TextBoxMSIPackage.Text.Length -gt 0) { "MSI" } else { "Script" }
-        DetectionMethod             = 'if (Test-Path C:\\DummyDetectionMethod) {Write-Host "IMPORTANT! This detection method does not work. You must manually change it."}'
+        
     }
 }
 
@@ -3967,8 +3728,9 @@ function Create-ApplicationObjects {
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # ++   Collections
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    
         if ($CreateCollection) {
-            CreateCMCollection -CollectionName $CollectionName -CollectionNameUninstall $CollectionNameUninstall -CollectionType $CollectionType -CollectionFolderName $CollectionFolderName -CollectionUninstallFolderName $CollectionUninstallFolderName -ADGroup:$CreateADGroup
+            CreateCMCollection -CollectionName $CollectionName -CollectionNameUninstall $CollectionNameUninstall -CollectionType $CollectionType -CollectionFolderName $CollectionFolderName -CollectionUninstallFolderName $CollectionUninstallFolderName -ADGroup:$CreateADGroup -ApplicationtestCollectionname $ApplicationtestCollectionname
         }
 
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -3987,27 +3749,51 @@ function Create-ApplicationObjects {
         # ++   Deployments
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         if ($CreateDeployment) {
-            New-CMApplicationDeployment -CollectionName $CollectionName -Name $ApplicationName -DeployPurpose $DeployPurpose
 
-            $message = "Created $DeployPurpose deployment for $ApplicationName to collection $CollectionName"
-            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-            Write-Host $message -ForegroundColor Green
-            write-log $message -type 1
-
-            New-CMApplicationDeployment -CollectionName $CollectionNameUninstall -Name $ApplicationName -DeployPurpose Required -DeployAction Uninstall
-            $message = "Created $DeployPurpose UNINSTALL deployment for $ApplicationName to collection $CollectionName"
-            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
-            Write-Host $message -ForegroundColor Green
-            write-log $message -type 1
-
-            if (-not [string]::IsNullOrWhiteSpace($ApplicationtestCollectionname)) {
-                New-CMApplicationDeployment -CollectionName $ApplicationtestCollectionname -Name $ApplicationName -DeployPurpose Available -DeployAction Install
-                $message = "Created available Test deployment for $ApplicationName to collection $ApplicationtestCollectionname"
+            try {
+                New-CMApplicationDeployment -CollectionName $CollectionName -Name $ApplicationName -DeployPurpose $DeployPurpose
+                $message = "Created $DeployPurpose deployment for $ApplicationName to collection $CollectionName"
                 Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
                 Write-Host $message -ForegroundColor Green
                 write-log $message -type 1
+            } catch {
+                $message = "⚠ Deployment already exists or failed for $ApplicationName to collection $CollectionName. Error: $($_.Exception.Message)"
+                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+                Write-Host $message -ForegroundColor Red
+                write-log $message -type 2
+            }
+
+
+            try {
+                New-CMApplicationDeployment -CollectionName $CollectionNameUninstall -Name $ApplicationName -DeployPurpose Required -DeployAction Uninstall
+                $message = "Created UNINSTALL deployment for $ApplicationName to collection $CollectionNameUninstall"
+                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+                Write-Host $message -ForegroundColor Green
+                write-log $message -type 1
+            } catch {
+                $message = "⚠ UNINSTALL deployment already exists or failed for $ApplicationName to collection $CollectionNameUninstall. Error: $($_.Exception.Message)"
+                Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+                Write-Host $message -ForegroundColor Red
+                write-log $message -type 2
+            }
+           
+
+            if (-not [string]::IsNullOrWhiteSpace($ApplicationtestCollectionname)) {
+                try {
+                    New-CMApplicationDeployment -CollectionName $ApplicationtestCollectionname -Name $ApplicationName -DeployPurpose Available -DeployAction Install
+                    $message = "Created Test deployment for $ApplicationName to collection $ApplicationtestCollectionname"
+                    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+                    Write-Host $message -ForegroundColor Green
+                    write-log $message -type 1
+                } catch {
+                    $message = "⚠ Test deployment already exists or failed for $ApplicationName to collection $ApplicationtestCollectionname. Error: $($_.Exception.Message)"
+                    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
+                    Write-Host $message -ForegroundColor Red
+                    write-log $message -type 2
+                }
             }
         }
+
 
         if (-not $ProductCode) {
             $message = "IMPORTANT! Remember to manually modify the detection method afterwards."
@@ -4044,7 +3830,7 @@ function Create-ApplicationObjects {
             return
         }
 
-        $IntuneApp = Create-IntuneApp -Publisher $Publisher -DisplayName $ApplicationName -ContentSourcePath $ContentSourcePath -InstallationProgram $InstallationProgram -UninstallationProgram $UninstallationProgram
+        $IntuneApp = Create-IntuneApp -Publisher $Publisher -DisplayName $ApplicationName -ContentSourcePath $ContentSourcePath -InstallationProgram $InstallationProgram -UninstallationProgram $UninstallationProgram -Description $ApplicationDescription
         Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "$ApplicationName successfully created"
 
         if ($CreateDeployment) {
@@ -4293,6 +4079,35 @@ if (!$checkboxCreateInIntune.IsChecked -and !$checkboxCreateInConfigMgr.IsChecke
 }
 
 
+$TabControlMain.Add_SelectionChanged({
+    $selectedTab = $TabControlMain.SelectedItem
+
+    switch ($selectedTab.Name) {
+        "TabCreateApp" {
+            $BoxCommonControls.Visibility = "Visible"
+            $ButtonCreate.Visibility = "Visible"
+            $ButtonCreateWinGet.Visibility = "Collapsed"
+        }
+        "TabCreateWinget" {
+            $BoxCommonControls.Visibility = "Visible"
+            $ButtonCreate.Visibility = "Collapsed"
+            $ButtonCreateWinGet.Visibility = "Visible"
+        }
+        "TabConfig" {
+            $BoxCommonControls.Visibility = "Collapsed"
+            $ButtonCreate.Visibility = "Collapsed"
+            $ButtonCreateWinGet.Visibility = "Collapsed"
+        }
+        default {
+            $BoxCommonControls.Visibility = "Visible"
+            $ButtonCreate.Visibility = "Visible"
+            $ButtonCreateWinGet.Visibility = "Collapsed"
+        }
+    }
+})
+
+
+
 
 #############################################################################
 # BEGIN Winget
@@ -4473,12 +4288,26 @@ $ButtonCreateWinGet.add_Click({
     }
 
     foreach ($WingetApp in $dataGridWinget.SelectedItems) {
-        Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "Start creating PSADT App for $($WingetApp.Name)"
+        $message = "Start creating PSADT App for $($WingetApp.Name)"
+        Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 1
+        Write-Host $message
 
-        #$yaml = Get-WingetYamlContent -PackageId $WingetApp.ID -PackageVersion $WingetApp.Version
+        $yaml = Get-WingetInstallContent -PackageId $WingetApp.ID -PackageVersion $WingetApp.Version
+        $localeYaml = Get-WingetLocaleContent -PackageId $WingetApp.ID -PackageVersion $WingetApp.Version
+
+        $publisher = if ($localeYaml) { $localeYaml.Publisher } else { "Unknown Publisher" }
+        $shortDesc = if ($localeYaml) { $localeYaml.ShortDescription } else { "" }
+
+        $description = "$shortDesc | WinGetID=$($WingetApp.ID) | Update=True | Created by ApplicationManager from WinGet"
+
+
+        Write-Host $publisher
+
 
         if ($yaml -eq $null) {
-            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ YAML not found for $($WingetApp.ID)" -Severity 3
+            $message = "❌ YAML not found for $($WingetApp.ID)"
+            Write-Host $message
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 3
             continue
         }
 
@@ -4489,7 +4318,9 @@ $ButtonCreateWinGet.add_Click({
             Copy-Item -Path $PSADTTemplate -Destination $WingetAppTMPPath -Recurse -Force
         }
         catch {
-            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ Failed to copy template to $WingetAppTMPPath" -Severity 3
+            $message = "❌ Failed to copy template to $WingetAppTMPPath"
+            Write-Host $message
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 3
             continue
         }
 
@@ -4499,8 +4330,19 @@ $ButtonCreateWinGet.add_Click({
         $file = if (Test-Path $fileV4) { $fileV4 } elseif (Test-Path $fileV3) { $fileV3 } else { $null }
 
         if (-not $file) {
-            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ No PSADT script found in: $WingetAppTMPPath" -Severity 3
+            $message = "❌ No PSADT script found in: $WingetAppTMPPath"
+            Write-Host $message
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 3
             continue
+        }
+
+        # Set executable name for install/uninstall commands
+        if ($file -eq $fileV4) {
+            $installerExe = "Invoke-AppDeployToolkit.exe"
+        } elseif ($file -eq $fileV3) {
+            $installerExe = "Deploy-Application.exe"
+        } else {
+            $installerExe = "Deploy-Application.exe"  # fallback just in case
         }
 
         # Prepare content for insertion
@@ -4513,6 +4355,60 @@ $ButtonCreateWinGet.add_Click({
         }
         catch {
             Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ Failed to modify script for $($WingetApp.Name)" -Severity 3
+        }
+
+        
+        if ($checkboxCreateInConfigMgr.IsChecked -or $checkboxCreateInIntune.IsChecked) {
+            # Define application name and other deployment info
+
+            Write-Host $WingetApp
+            Write-Host $yaml
+
+            if ($publisher -and $publisher -ne "Unknown Publisher") {
+                $ApplicationName = "$publisher $($WingetApp.Name) $($WingetApp.Version)"
+            } else {
+                $ApplicationName = "$($WingetApp.Name) $($WingetApp.Version)"
+            }
+
+            $DeployPurpose = if ($RadioButtonRequired.IsChecked) { "Required" } else { "Available" }
+
+            $DetectionScript = @"
+\$app = winget list '$($WingetApp.ID)' -e --accept-source-agreements 2>&1
+
+if (\$app -notmatch 'No installed package found matching input criteria') {
+    Write-Output 'Detected'
+    exit 0
+} else {
+    Write-Output 'Not Detected'
+    exit 1
+}
+"@
+
+
+
+
+            $appParams = @{
+                ApplicationName           = $ApplicationName
+                Appfullname               = $ApplicationName
+                ApplicationVersion        = $WingetApp.Version
+                ApplicationDescription    = $description
+                Publisher                 = $publisher
+                InstallationProgram       = "$installerExe"
+                UninstallationProgram     = "$installerExe UNINSTALL"
+                ContentSourcePath         = (Join-Path $Packagefolderpath "$($WingetApp.Name)_$($WingetApp.ID)")
+                CollectionName            = $ApplicationName
+                CollectionNameUninstall   = "$ApplicationName - Uninstall"
+                ADGroupName               = "$($ADGroupNamePrefix)_$($ApplicationName)"
+                ADGroupDescription        = "Members of this group will be targeted for deployment of $ApplicationName in ConfigMgr"
+                ProductCode               = $null
+                ProductVersion            = $WingetApp.Version
+                DetectionType             = "Script"
+                DetectionMethod           = $DetectionScript
+                DeployPurpose             = $DeployPurpose
+            }
+
+            $globalParams = Get-GlobalDeploymentSettings
+            Create-ApplicationObjects @globalParams @appParams
         }
 
         Start-Sleep -Seconds 2
@@ -4555,7 +4451,6 @@ $ButtonCreate.add_Click({
     if ($RadioButtonRequired.IsChecked) { $DeployPurpose = "Required" }
     elseif ($RadioButtonAvailable.IsChecked) { $DeployPurpose = "Available" }
 
-    $CollectionFolderName = if ($CheckboxStandardapp.IsChecked) { $Standardapplicationfoldername } else { $null }
 
     $appParams = @{
         ApplicationName           = $ApplicationName
@@ -4573,13 +4468,22 @@ $ButtonCreate.add_Click({
         ProductCode               = $ProductCode
         ProductVersion            = $ProductVersion
         DetectionType             = $DetectionType
+        DetectionMethod           = 'if (Test-Path C:\\DummyDetectionMethod) {Write-Host "IMPORTANT! This detection method does not work. You must manually change it."}'
         DeployPurpose             = $DeployPurpose
-        CollectionFolderName      = $CollectionFolderName
+        
     }
 
     $globalParams = Get-GlobalDeploymentSettings
     Create-ApplicationObjects @globalParams @appParams
 })
+
+$CheckBoxCreateDeployment.Add_Checked({
+    CheckBoxCreateDeploymentChanged
+})
+$CheckBoxCreateDeployment.Add_Unchecked({
+    CheckBoxCreateDeploymentChanged
+})
+
 
 
 #Show Form
