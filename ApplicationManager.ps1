@@ -4265,7 +4265,7 @@ $ButtonCreateWinGet.add_Click({
     Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "Integrate Winget Application into PSADT Template"
 
     # Check if PSADT Template path is valid
-    if ([string]::IsNullOrWhiteSpace($PSADTTemplate) -or -not (Test-Path $PSADTTemplate)) {
+    if ([string]::IsNullOrWhiteSpace($PSADTTemplate) -or -not (Test-Path $PSADTTemplate) -or -not (Get-ChildItem $PSADTTemplate | Measure-Object).Count) {
 
         $result = [System.Windows.MessageBox]::Show("PSADT Template path is not valid. Do you want to download the v4 template from GitHub?", "PSADT Template Missing", "YesNo", "Warning")
 
