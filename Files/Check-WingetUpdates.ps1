@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 # Check-WingetUpdates.ps1
+=======
+﻿# Check-WingetUpdates.ps1
+>>>>>>> Stashed changes
 <#
 param(
     [Parameter(Mandatory = $true)][string]$Tenant,
