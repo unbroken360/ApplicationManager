@@ -4,6 +4,27 @@ All notable changes to **ApplicationManager** will be documented in this file.
 
 ---
 
+## [0.11.0] - 2025-08-07
+
+### ✨ Added
+
+- Detection script template system: uses `Files\DetectionScriptWingetTemplate.ps1` with `<APPID>` and `<APPVERSION>` placeholders.
+- Version-aware detection: compares installed version using `[Version]` and `-ge` operator.
+- Automatic generation of detection script files per app (`SupportFiles\Detect-<AppID>.ps1`).
+- Support for `_install.bat` and `_uninstall.bat`: automatically used as install/uninstall commands if present in the app folder.
+- Smart `ServiceUI` wrapping: automatically applied **only if** install/uninstall is **not** a `.bat` file, prioritizing `ServiceUI_x64.exe`.
+
+### 🛠 Fixed
+
+- Resolved `Rename-Item` exceptions when `.intunewin` file already exists.
+- Fixed issue where ServiceUI command line was broken due to multiple matches (e.g., both x64 and x86).
+
+### 🧼 Improved
+
+- PSADT template copying logic: now safely skips existing items and handles subfolders cleanly.
+- Improved detection command generation and script validation.
+- Clearer log messages for detection, copy, rename, and error handling.
+
 ## [0.10.0] - 2025-03-28
 
 ### ✨ Added

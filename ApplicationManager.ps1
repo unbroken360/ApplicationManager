@@ -26,7 +26,7 @@
 # - Enables reusing the logic in multiple places like ButtonCreateClick and ButtonCreateWinGet.
 # - Avoided redundant code and UI-specific dependencies inside logic functions.
 # - Improved maintainability and testability of the script.
-# 0.11.0 - Find release notes on GitHub
+# 0.11.0 - Find release notes on GitHub: https://github.com/unbroken360/ApplicationManager
 
 #
 # Purpose : This script imports Application to ConfigMgr and Intune
