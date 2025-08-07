@@ -2,7 +2,7 @@
 # Author  : Stefan Schuh
 #
 # Created : 2020/11/04
-# Modified : 2025/04/09
+# Modified : 2025/08/07
 # 0.1 - Created WPF Version
 # 0.2 - Change Uninstall Collection naming; Add Browse Button for App selction
 # 0.3 - Added IntuneWinAppUtil.exe to Files Folder and as Parameter in AppCreation. Bugfix in CleanUpIntuneOutputFolder. Added ToolTips
@@ -26,6 +26,8 @@
 # - Enables reusing the logic in multiple places like ButtonCreateClick and ButtonCreateWinGet.
 # - Avoided redundant code and UI-specific dependencies inside logic functions.
 # - Improved maintainability and testability of the script.
+# 0.11.0 - Find release notes on GitHub
+
 #
 # Purpose : This script imports Application to ConfigMgr and Intune
 # https://www.benecke.cloud/powershell-how-to-build-a-gui-with-visual-studio/
@@ -1894,7 +1896,17 @@ Function Create-IntuneApp {
         [string]$UninstallationProgram,
         [parameter(Mandatory = $false)]
         [ValidateNotNullOrEmpty()]
-        [string]$Description
+        [string]$Description,
+        [string]$DetectionType = "Script",
+        [string]$DetectionMethod = 'if (Test-Path C:\DummyDetectionMethod) {Write-Host "IMPORTANT! This detection method does not work. You must manually change it."}',
+        [string]$ProductCode,
+        [string]$ProductVersion,
+        [string]$FilePath,                # E.g. C:\Program Files\MyApp
+        [string]$FileOrFolder,            # E.g. app.exe
+        [string]$FileDetectionMode = "existence", # one of: existence, version, size, datecreated, datemodified
+        [string]$FileDetectionOperator = "exists", # for existence or version check
+        [string]$FileDetectionValue = $null,       # version, size, or datetime
+        [bool]$FileCheck32BitOn64System = $false
     )
 
     
@@ -1909,23 +1921,70 @@ Function Create-IntuneApp {
 
     #Check if App with specified Name already exiss
     $IntuneApp = Get-IntuneWin32App -DisplayName $DisplayName -Verbose
-    if (!$IntuneApp) {      
-        # Create .intunewin package file
-        $IntuneWinAppUtilPath = $workingdir + "\Files\" + "IntuneWinAppUtil.exe"
-        $IntuneWinFile = New-IntuneWin32AppPackage -SourceFolder $ContentSourcePath -SetupFile $InstallationProgram -OutputFolder $IntuneOutputFolder -IntuneWinAppUtilPath $IntuneWinAppUtilPath -Verbose
-        $NewIntuneWinFile = "$($IntuneOutputFolder)\$($DisplayName).intunewin"
+    if (!$IntuneApp) {
+        $IntuneWinAppUtilPath = Join-Path $workingdir "Files\IntuneWinAppUtil.exe"
+        $NewIntuneWinFile = Join-Path $IntuneOutputFolder "$DisplayName.intunewin"
 
-        If (!(Test-Path $NewIntuneWinFile -PathType Leaf)) {
-            Write-Host "File not exist, Rename"
-            $IntuneWinFile = Rename-Item -Path $IntuneWinFile.Path -NewName "$DisplayName.intunewin" -Force
+        # Ensure the file is (re)created, even if it already exists
+        try {
+            $IntuneWinFile = New-IntuneWin32AppPackage `
+                -SourceFolder $ContentSourcePath `
+                -SetupFile $InstallationProgram `
+                -OutputFolder $IntuneOutputFolder `
+                -IntuneWinAppUtilPath $IntuneWinAppUtilPath `
+                -Force `
+                -Verbose
+        } catch {
+            Write-Warning "❌ Failed to create IntuneWin package: $_"
+            return
         }
-        else {
-            Write-Host "File exist, Rename"
-            #File Already Exist, Backup Existing One
-            Get-ChildItem $NewIntuneWinFile | Rename-Item -NewName { $_.Name -replace '.intunewin', "_$($(get-date -f yyyy-MM-dd)).backup" }
-            $IntuneWinFile = Rename-Item -Path $IntuneWinFile.Path -NewName "$DisplayName.intunewin" -Force
-            #Rename-Item -Path $IntuneWinFile.Path -NewName "$Appfullname.intunewin" -Force
+
+        # Validate the package object
+        if (-not $IntuneWinFile -or -not $IntuneWinFile.Path -or !(Test-Path $IntuneWinFile.Path)) {
+            Write-Warning "❌ New-IntuneWin32AppPackage did not return a valid file. Possibly skipped due to existing file or incorrect parameters."
+            return
         }
+
+        if (!(Test-Path $NewIntuneWinFile -PathType Leaf)) {
+            Write-Host "Final .intunewin file doesn't exist yet — renaming generated file..."
+            try {
+                Rename-Item -Path $IntuneWinFile.Path -NewName "$DisplayName.intunewin" -Force
+                $IntuneWinFile = Get-Item $NewIntuneWinFile
+                Write-Host "Renamed file to: $($IntuneWinFile.FullName)"
+            } catch {
+                Write-Warning "❌ Failed to rename generated file: $_"
+                return
+            }
+        } else {
+            Write-Host "Final .intunewin file already exists — backing up and replacing..."
+
+            $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
+            $backupName = "$DisplayName_$timestamp.backup.intunewin"
+            $backupPath = Join-Path $IntuneOutputFolder $backupName
+
+            try {
+                Rename-Item -Path $NewIntuneWinFile -NewName $backupName -Force
+                Write-Host "Backed up existing file to: $backupPath"
+            } catch {
+                Write-Warning "❌ Failed to back up existing .intunewin file: $_"
+                return
+            }
+
+            try {
+                Rename-Item -Path $IntuneWinFile.Path -NewName "$DisplayName.intunewin" -Force
+                $IntuneWinFile = Get-Item $NewIntuneWinFile
+                Write-Host "Renamed file to: $($IntuneWinFile.FullName)"
+            } catch {
+                Write-Warning "❌ Failed to rename generated file after backup: $_"
+                return
+            }
+        }
+    
+
+    
+
+
+        <#
     
         if ($TextBoxMSIPackage.Text.Length -gt 0) {
             Write-Host "ProductCode: $($ProductCode)"
@@ -1937,6 +1996,130 @@ Function Create-IntuneApp {
             #Create Dummy Detection
             $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry -DetectionType exists -Existence -KeyPath HKEY_LOCAL_MACHINE\SOFTWARE\ToBeEdited -Confirm
         }
+        #>
+
+        switch ($DetectionType.ToLower()) {
+            "msi" {
+                if (-not $ProductCode -or -not $ProductVersion) {
+                    throw "ProductCode and ProductVersion must be provided for MSI detection"
+                }
+                Write-Host "Using MSI detection rule with ProductCode: $ProductCode"
+                $DetectionRule = New-IntuneWin32AppDetectionRuleMSI `
+                    -ProductCode $ProductCode `
+                    -ProductVersionOperator greaterThanOrEqual `
+                    -ProductVersion $ProductVersion
+            }
+
+            "registry" {
+                Write-Host "Using default registry detection rule"
+                $DetectionRule = New-IntuneWin32AppDetectionRuleRegistry `
+                    -DetectionType exists `
+                    -Existence `
+                    -KeyPath "HKEY_LOCAL_MACHINE\SOFTWARE\ToBeEdited" `
+                    -Confirm
+            }
+
+            "script" {
+                # Check for existing detection script in SupportFiles
+                $supportFilesPath = Join-Path $ContentSourcePath "SupportFiles"
+                $existingDetectScript = Get-ChildItem -Path $supportFilesPath -Filter "Detect-*.ps1" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+
+                if ($existingDetectScript) {
+                    Write-Host "Found existing detection script in SupportFiles: $($existingDetectScript.FullName)"
+                    $scriptPath = $existingDetectScript.FullName
+                } else {
+                    # Fall back to writing the provided DetectionMethod string to a temp file
+                    $scriptFolder = Join-Path $env:TEMP "IntuneDetectionScripts"
+                    if (!(Test-Path $scriptFolder)) {
+                        New-Item -Path $scriptFolder -ItemType Directory -Force | Out-Null
+                    }
+
+                    $scriptPath = Join-Path $scriptFolder "$($DisplayName)_Detection.ps1"
+
+                    Write-Host "No existing script found. Writing detection script to: $scriptPath"
+                    $DetectionMethod | Out-File -FilePath $scriptPath -Encoding UTF8 -Force
+
+                    if (!(Test-Path $scriptPath)) {
+                        throw "Failed to create detection script at: $scriptPath"
+                    }
+                }
+
+                Write-Host "Using script detection rule with file: $scriptPath"
+                $DetectionRule = New-IntuneWin32AppDetectionRuleScript `
+                    -ScriptFile $scriptPath `
+                    -EnforceSignatureCheck $false `
+                    -RunAs32Bit $false
+            }
+
+
+            "file" {
+                Write-Host "Using file-based detection rule"
+
+                if (-not $FilePath -or -not $FileOrFolder) {
+                    throw "FilePath and FileOrFolder must be provided for file detection"
+                }
+
+                $params = @{
+                    Path                     = $FilePath
+                    FileOrFolder            = $FileOrFolder
+                    Check32BitOn64System    = $FileCheck32BitOn64System
+                }
+
+                switch ($FileDetectionMode.ToLower()) {
+                    "existence" {
+                        $params.Existence = $true
+                        $params.DetectionType = $FileDetectionOperator  # "exists" or "doesNotExist"
+                    }
+
+                    "version" {
+                        if (-not $FileDetectionValue) {
+                            throw "FileDetectionValue (e.g. 1.0.0.0) must be provided for version check"
+                        }
+                        $params.Version = $true
+                        $params.Operator = $FileDetectionOperator
+                        $params.VersionValue = $FileDetectionValue
+                    }
+
+                    "size" {
+                        if (-not $FileDetectionValue) {
+                            throw "FileDetectionValue (e.g. 100) must be provided for size check"
+                        }
+                        $params.Size = $true
+                        $params.Operator = $FileDetectionOperator
+                        $params.SizeInMBValue = $FileDetectionValue
+                    }
+
+                    "datecreated" {
+                        if (-not $FileDetectionValue) {
+                            throw "FileDetectionValue (datetime) must be provided for creation date check"
+                        }
+                        $params.DateCreated = $true
+                        $params.Operator = $FileDetectionOperator
+                        $params.DateTimeValue = [datetime]$FileDetectionValue
+                    }
+
+                    "datemodified" {
+                        if (-not $FileDetectionValue) {
+                            throw "FileDetectionValue (datetime) must be provided for modified date check"
+                        }
+                        $params.DateModified = $true
+                        $params.Operator = $FileDetectionOperator
+                        $params.DateTimeValue = [datetime]$FileDetectionValue
+                    }
+
+                    default {
+                        throw "Unsupported FileDetectionMode: $FileDetectionMode"
+                    }
+                }
+
+                $DetectionRule = New-IntuneWin32AppDetectionRuleFile @params
+            }
+
+            default {
+                throw "Unknown DetectionType: $DetectionType. Valid types are: MSI, Registry, Script, File."
+            }
+        }
+
 
         # Create custom requirement rule
         $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture All -MinimumSupportedWindowsRelease "W10_1607"
@@ -1947,12 +2130,30 @@ Function Create-IntuneApp {
 
         #Add new EXE Win32 app
         #Check for ServiceUI (Intune workaround for User interaction)
-        if (Get-ChildItem -Path $ContentSourcePath -File -Name -Include "ServiceUI*") {
-            $ServicueUI = Get-ChildItem -Path $ContentSourcePath -File -Name -Include "ServiceUI*"
-            Write-Host "ServcieUI found ($ServicueUI) in root directory"
-            $InstallationProgram = "$ServicueUI -process:explorer.exe $InstallationProgram"
-            $UninstallationProgram = "$ServicueUI -process:explorer.exe $UninstallationProgram"
+        # Apply ServiceUI only if NOT using .bat scripts
+        $usingBatchFiles = ($InstallationProgram -like "*.bat" -or $UninstallationProgram -like "*.bat")
+
+        if (-not $usingBatchFiles) {
+            # First try to get ServiceUI_x64.exe
+            $serviceUIFile = Get-ChildItem -Path $ContentSourcePath -File -Include "ServiceUI_x64.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+
+            # If not found, fall back to any other ServiceUI*
+            if (-not $serviceUIFile) {
+                $serviceUIFile = Get-ChildItem -Path $ContentSourcePath -File -Include "ServiceUI*" -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+
+            if ($serviceUIFile) {
+                Write-Host "✅ ServiceUI found: $($serviceUIFile.Name) — wrapping install/uninstall commands..."
+
+                $InstallationProgram = "$($serviceUIFile.Name) -process:explorer.exe $InstallationProgram"
+                $UninstallationProgram = "$($serviceUIFile.Name) -process:explorer.exe $UninstallationProgram"
+            } else {
+                Write-Host "ℹ️ No ServiceUI executable found — using default commands."
+            }
+        } else {
+            Write-Host "⚠️ Skipping ServiceUI wrapping because .bat files are being used"
         }
+
         Write-Host "Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $DisplayName -Description $Description -Publisher $Publisher -InstallExperience system -RestartBehavior suppress -DetectionRule $DetectionRule -RequirementRule $RequirementRule  -AppVersion $ProductVersion -Notes $ContentSourcePath -InstallCommandLine $InstallationProgram -UninstallCommandLine $UninstallationProgram -Verbose"
         $IntuneApp = Add-IntuneWin32App -FilePath $NewIntuneWinFile -DisplayName $DisplayName -Description $Description -Publisher $Publisher -InstallExperience system -RestartBehavior suppress -DetectionRule $DetectionRule -AppVersion $ProductVersion -Notes $ContentSourcePath -RequirementRule $RequirementRule -InstallCommandLine $InstallationProgram -UninstallCommandLine $UninstallationProgram -Verbose
         
@@ -3830,7 +4031,16 @@ function Create-ApplicationObjects {
             return
         }
 
-        $IntuneApp = Create-IntuneApp -Publisher $Publisher -DisplayName $ApplicationName -ContentSourcePath $ContentSourcePath -InstallationProgram $InstallationProgram -UninstallationProgram $UninstallationProgram -Description $ApplicationDescription
+
+        $IntuneApp = Create-IntuneApp `
+            -Publisher $Publisher `
+            -DisplayName $ApplicationName `
+            -ContentSourcePath $ContentSourcePath `
+            -InstallationProgram $InstallationProgram `
+            -UninstallationProgram $UninstallationProgram `
+            -Description $ApplicationDescription `
+            -DetectionType $DetectionType `
+            -DetectionMethod $DetectionMethod
         Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "$ApplicationName successfully created"
 
         if ($CreateDeployment) {
@@ -4313,9 +4523,29 @@ $ButtonCreateWinGet.add_Click({
 
         # Build folder path using version
         $WingetAppTMPPath = Join-Path $Packagefolderpath "$($WingetApp.Name)_$($WingetApp.ID)"
-
+        Write-Host "Source: $PSADTTemplate"
+        Write-Host "Destination: $WingetAppTMPPath"
         try {
-            Copy-Item -Path $PSADTTemplate -Destination $WingetAppTMPPath -Recurse -Force
+
+            $itemsToCopy = Get-ChildItem -Path $PSADTTemplate -Force
+
+            foreach ($item in $itemsToCopy) {
+                $destination = Join-Path $WingetAppTMPPath $item.Name
+
+                if (Test-Path $destination) {
+                    Write-Host "Skipping existing: $destination"
+                } else {
+     
+                    try {
+                        Copy-Item -Path $item.FullName -Destination $destination -Recurse -Force
+                    }
+                    catch {
+                        Write-Warning "❌ Failed to copy: $($item.FullName) → $destination"
+                        Write-Warning $_
+                    }
+                }
+            }
+
         }
         catch {
             $message = "❌ Failed to copy template to $WingetAppTMPPath"
@@ -4345,6 +4575,24 @@ $ButtonCreateWinGet.add_Click({
             $installerExe = "Deploy-Application.exe"  # fallback just in case
         }
 
+        # Default installer (from PSADT)
+        $InstallationProgram = "$installerExe"
+        $UninstallationProgram = "$installerExe UNINSTALL"
+
+        # Check for local _install.bat / _uninstall.bat overrides
+        $installBat = Join-Path $WingetAppTMPPath "_install.bat"
+        $uninstallBat = Join-Path $WingetAppTMPPath "_uninstall.bat"
+
+        if (Test-Path $installBat) {
+            $InstallationProgram = "_install.bat"
+            Write-Host "Found custom install script: $InstallationProgram"
+        }
+
+        if (Test-Path $uninstallBat) {
+            $UninstallationProgram = "_uninstall.bat"
+            Write-Host "Found custom uninstall script: $UninstallationProgram"
+        }
+
         # Prepare content for insertion
         $DefaultWingetCall = $WingetFunction + $TextBoxWingetPreview.Text
         $Content = $DefaultWingetCall.Replace('<AppID>', $WingetApp.ID).Replace('<AppName>', $WingetApp.Name)
@@ -4372,17 +4620,71 @@ $ButtonCreateWinGet.add_Click({
 
             $DeployPurpose = if ($RadioButtonRequired.IsChecked) { "Required" } else { "Available" }
 
-            $DetectionScript = @"
-\$app = winget list '$($WingetApp.ID)' -e --accept-source-agreements 2>&1
+            <#
 
-if (\$app -notmatch 'No installed package found matching input criteria') {
+            $DetectionScript = @'
+$app = winget list '<AppID>' -e --accept-source-agreements 2>&1
+
+if ($app -notmatch 'No installed package found matching input criteria') {
     Write-Output 'Detected'
     exit 0
 } else {
     Write-Output 'Not Detected'
     exit 1
 }
-"@
+'@
+
+            # Replace placeholder <AppID> with actual ID
+            $DetectionScript = $DetectionScript.Replace('<AppID>', $WingetApp.ID)
+
+
+            # Define support path
+            $supportFilesPath = Join-Path $WingetAppTMPPath "SupportFiles"
+            if (-not (Test-Path $supportFilesPath)) {
+                New-Item -Path $supportFilesPath -ItemType Directory -Force | Out-Null
+            }
+
+            # Save detection method to a file
+            $detectScriptPath = Join-Path $supportFilesPath "Detect-$($WingetApp.ID).ps1"
+            try {
+                $DetectionScript | Out-File -FilePath $detectScriptPath -Encoding UTF8 -Force
+                Write-Host "✅ Detection script written to: $detectScriptPath"
+            } catch {
+                Write-Warning "❌ Failed to write detection script: $_"
+            }
+
+            #>
+
+
+            # Define support path
+            $supportFilesPath = Join-Path $WingetAppTMPPath "SupportFiles"
+            if (-not (Test-Path $supportFilesPath)) {
+                New-Item -Path $supportFilesPath -ItemType Directory -Force | Out-Null
+            }
+
+            # Read detection script template
+            $scriptTemplatePath = Join-Path $workingdir "Files\DetectionScriptWingetTemplate.ps1"
+
+            if (Test-Path $scriptTemplatePath) {
+                try {
+                    $DetectionScript = Get-Content -Path $scriptTemplatePath -Raw
+
+                    # Replace placeholders
+                    $DetectionScript = $DetectionScript.Replace('<APPID>', $WingetApp.ID)
+                    $DetectionScript = $DetectionScript.Replace('<APPVERSION>', $WingetApp.Version)
+
+                    # Save processed script
+                    $detectScriptPath = Join-Path $supportFilesPath "Detect-$($WingetApp.ID).ps1"
+                    $DetectionScript | Out-File -FilePath $detectScriptPath -Encoding UTF8 -Force
+
+                    Write-Host "✅ Detection script written to: $detectScriptPath"
+                } catch {
+                    Write-Warning "❌ Failed to read or write detection script: $_"
+                }
+            } else {
+                Write-Warning "❌ Detection script template not found: $scriptTemplatePath"
+            }
+
 
 
 
@@ -4393,8 +4695,8 @@ if (\$app -notmatch 'No installed package found matching input criteria') {
                 ApplicationVersion        = $WingetApp.Version
                 ApplicationDescription    = $description
                 Publisher                 = $publisher
-                InstallationProgram       = "$installerExe"
-                UninstallationProgram     = "$installerExe UNINSTALL"
+                InstallationProgram       = $InstallationProgram
+                UninstallationProgram     = $UninstallationProgram
                 ContentSourcePath         = (Join-Path $Packagefolderpath "$($WingetApp.Name)_$($WingetApp.ID)")
                 CollectionName            = $ApplicationName
                 CollectionNameUninstall   = "$ApplicationName - Uninstall"
@@ -4450,6 +4752,19 @@ $ButtonCreate.add_Click({
     $DeployPurpose = "Available"
     if ($RadioButtonRequired.IsChecked) { $DeployPurpose = "Required" }
     elseif ($RadioButtonAvailable.IsChecked) { $DeployPurpose = "Available" }
+
+    if ($TextBoxMSIPackage.Text) {
+        try {
+            $ProductCode = [GUID](Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductCode)[3]
+        } catch { $ProductCode = $null }
+
+        try {
+            $ProductVersion = (Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductVersion).Trim()
+        } catch { $ProductVersion = $null }
+    }
+
+    $DetectionType = if ($ProductCode -and $ProductVersion) { "MSI" } else { "Script" }
+
 
 
     $appParams = @{
