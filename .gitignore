@@ -9,3 +9,6 @@
 
 # Ignore environment files
 *.ps1xml
+
+# Ignore LocalEnvironment folder
+LocalEnvironment
