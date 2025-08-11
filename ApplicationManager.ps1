@@ -1791,7 +1791,6 @@ function CheckAndCreate-EnterpriseApplication {
     if ($existingApp) {
         Write-Host "Application with the name '$applicationName' already exists. Using the existing application."
         $appId = [string]$existingApp.AppId
-        $existingApp | Format-List
 
         <# Retrieve existing passwords
         $passwordCredentials = Get-MgApplicationPasswordCredential -ApplicationId $existingApp.Id
@@ -1807,10 +1806,6 @@ function CheckAndCreate-EnterpriseApplication {
 
         # Create new application
         $newApp = New-MgApplication -DisplayName $appDetails.DisplayName -SignInAudience $appDetails.SignInAudience -PublicClient $appDetails.PublicClient -RequiredResourceAccess $appDetails.RequiredResourceAccess
-
-
-        # Output the new application's details
-        $newApp | Format-List
 
         # Retrieve the AppId of the newly created application
         $appId = [string]$newApp.AppId
