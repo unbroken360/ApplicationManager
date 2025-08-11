@@ -4378,9 +4378,9 @@ $ButtonCreateWinGet.add_Click({
             $DeployPurpose = if ($RadioButtonRequired.IsChecked) { "Required" } else { "Available" }
 
             $DetectionScript = @"
-`$app = winget list '$($WingetApp.ID)' -e --accept-source-agreements 2>&1
+`$app = winget list '$($WingetApp.ID)' --exact --accept-source-agreements 2>&1
 
-if (`$app -notmatch 'No installed package found matching input criteria') {
+if (`$LASTEXITCODE -eq 0) {
     Write-Output 'Detected'
     exit 0
 } else {
