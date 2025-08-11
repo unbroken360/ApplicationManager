@@ -1294,7 +1294,7 @@ function Get-WingetAppInfo {
         Write-Host "Winget module is available. Trying to search for app: $SearchApp"
 
         try {
-            $AppResult = Find-WinGetPackage -Name $SearchApp -ErrorAction Stop
+            $AppResult = Find-WinGetPackage -Query $SearchApp -ErrorAction Stop
 
             $results = foreach ($app in $AppResult) {
                 $software = [Software]::new()
