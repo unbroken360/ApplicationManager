@@ -510,7 +510,7 @@ Function New-ProgressBar {
             #===========================================================================
             # Store Form Objects In PowerShell
             #===========================================================================
-        ([xml]$xaml).SelectNodes("//*[@Name]") | % { $SyncHash."$($_.Name)" = $SyncHash.Window.FindName($_.Name) }
+            ([xml]$xaml).SelectNodes("//*[@Name]") | % { $SyncHash."$($_.Name)" = $SyncHash.Window.FindName($_.Name) }
 
             $updateBlock = {            
             
@@ -1373,7 +1373,7 @@ function Get-WingetInstallContent {
     )
 
     try {
-        $firstLetter = $PackageId.Substring(0,1).ToLower()
+        $firstLetter = $PackageId.Substring(0, 1).ToLower()
         $repoPath = "$($PackageId.Replace('.', '/'))"
         $url = "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/$firstLetter/$repoPath/$PackageVersion/$PackageId.installer.yaml"
 
@@ -1400,7 +1400,7 @@ function Get-WingetLocaleContent {
     )
 
     try {
-        $firstLetter = $PackageId.Substring(0,1).ToLower()
+        $firstLetter = $PackageId.Substring(0, 1).ToLower()
         $repoPath = "$($PackageId.Replace('.', '/'))"
         $url = "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/$firstLetter/$repoPath/$PackageVersion/$PackageId.locale.$Locale.yaml"
 
@@ -1929,7 +1929,8 @@ Function Create-IntuneApp {
                 -IntuneWinAppUtilPath $IntuneWinAppUtilPath `
                 -Force `
                 -Verbose
-        } catch {
+        }
+        catch {
             Write-Warning "❌ Failed to create IntuneWin package: $_"
             return
         }
@@ -1946,11 +1947,13 @@ Function Create-IntuneApp {
                 Rename-Item -Path $IntuneWinFile.Path -NewName "$DisplayName.intunewin" -Force
                 $IntuneWinFile = Get-Item $NewIntuneWinFile
                 Write-Host "Renamed file to: $($IntuneWinFile.FullName)"
-            } catch {
+            }
+            catch {
                 Write-Warning "❌ Failed to rename generated file: $_"
                 return
             }
-        } else {
+        }
+        else {
             Write-Host "Final .intunewin file already exists — backing up and replacing..."
 
             $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
@@ -1960,7 +1963,8 @@ Function Create-IntuneApp {
             try {
                 Rename-Item -Path $NewIntuneWinFile -NewName $backupName -Force
                 Write-Host "Backed up existing file to: $backupPath"
-            } catch {
+            }
+            catch {
                 Write-Warning "❌ Failed to back up existing .intunewin file: $_"
                 return
             }
@@ -1969,7 +1973,8 @@ Function Create-IntuneApp {
                 Rename-Item -Path $IntuneWinFile.Path -NewName "$DisplayName.intunewin" -Force
                 $IntuneWinFile = Get-Item $NewIntuneWinFile
                 Write-Host "Renamed file to: $($IntuneWinFile.FullName)"
-            } catch {
+            }
+            catch {
                 Write-Warning "❌ Failed to rename generated file after backup: $_"
                 return
             }
@@ -2022,7 +2027,8 @@ Function Create-IntuneApp {
                 if ($existingDetectScript) {
                     Write-Host "Found existing detection script in SupportFiles: $($existingDetectScript.FullName)"
                     $scriptPath = $existingDetectScript.FullName
-                } else {
+                }
+                else {
                     # Fall back to writing the provided DetectionMethod string to a temp file
                     $scriptFolder = Join-Path $env:TEMP "IntuneDetectionScripts"
                     if (!(Test-Path $scriptFolder)) {
@@ -2055,9 +2061,9 @@ Function Create-IntuneApp {
                 }
 
                 $params = @{
-                    Path                     = $FilePath
-                    FileOrFolder            = $FileOrFolder
-                    Check32BitOn64System    = $FileCheck32BitOn64System
+                    Path                 = $FilePath
+                    FileOrFolder         = $FileOrFolder
+                    Check32BitOn64System = $FileCheck32BitOn64System
                 }
 
                 switch ($FileDetectionMode.ToLower()) {
@@ -2142,10 +2148,12 @@ Function Create-IntuneApp {
 
                 $InstallationProgram = "$($serviceUIFile.Name) -process:explorer.exe $InstallationProgram"
                 $UninstallationProgram = "$($serviceUIFile.Name) -process:explorer.exe $UninstallationProgram"
-            } else {
+            }
+            else {
                 Write-Host "ℹ️ No ServiceUI executable found — using default commands."
             }
-        } else {
+        }
+        else {
             Write-Host "⚠️ Skipping ServiceUI wrapping because .bat files are being used"
         }
 
@@ -3251,11 +3259,11 @@ function CreateCMApplication {
 
     if (!(Get-CMApplication -Name $ApplicationName)) {
         $params = @{
-            Name             = $ApplicationName
-            Publisher        = $Publisher
-            AutoInstall      = $true
-            SoftwareVersion  = $ApplicationVersion
-            LocalizedName    = $Appfullname
+            Name            = $ApplicationName
+            Publisher       = $Publisher
+            AutoInstall     = $true
+            SoftwareVersion = $ApplicationVersion
+            LocalizedName   = $Appfullname
         }
 
         if ($Description) {
@@ -3812,35 +3820,35 @@ function CreateADGroup {
 
 function Get-GlobalDeploymentSettings {
     return @{
-        CreateInConfigMgr           = $checkboxCreateInConfigMgr.IsChecked
-        CreateInIntune              = $checkboxCreateInIntune.IsChecked
-        CreateCollection            = $CheckBoxCreateCollection.IsChecked
-        CreateADGroup               = $CheckBoxCreateADGroup.IsChecked
-        CollectionType              = if ($RadioButtonUser.IsChecked) { "User" } else { "Device" }
-        CollectionFolderName        = $CollectionFolderName
-        CollectionUninstallFolderName        = $CollectionUninstallFolderName
-        UserInteraction             = $CheckboxInteraction.IsChecked
-        DistributeContent           = $CheckBoxDistributeContent.IsChecked
-        CreateDeployment            = $CheckBoxCreateDeployment.IsChecked
+        CreateInConfigMgr             = $checkboxCreateInConfigMgr.IsChecked
+        CreateInIntune                = $checkboxCreateInIntune.IsChecked
+        CreateCollection              = $CheckBoxCreateCollection.IsChecked
+        CreateADGroup                 = $CheckBoxCreateADGroup.IsChecked
+        CollectionType                = if ($RadioButtonUser.IsChecked) { "User" } else { "Device" }
+        CollectionFolderName          = $CollectionFolderName
+        CollectionUninstallFolderName = $CollectionUninstallFolderName
+        UserInteraction               = $CheckboxInteraction.IsChecked
+        DistributeContent             = $CheckBoxDistributeContent.IsChecked
+        CreateDeployment              = $CheckBoxCreateDeployment.IsChecked
         ApplicationtestCollectionname = $ApplicationtestCollectionname
-        RunInstallAs32Bit           = $RunInstallAs32Bit
-        AllowFallbackSourceLocation = $AllowFallbackSourceLocation
-        DownloadOnSlowNetwork       = $DownloadOnSlowNetwork
-        EnableSWMapping             = $SWMappingenabled -eq $true
-        SWProductTable              = $SWProductTable
-        SWMapDBName                 = $SWMapDBName
-        CatalogID                   = $TextboxSWCatalogID.Text
-        Owner                       = $env:USERNAME
-        LogFile                     = $logfile
-        ShowSummary                 = $showsummaryfile -eq $true
-        MailServer                  = $mailserver
-        MailFrom                    = $mailfrom
-        MailRecipients              = $mailrecipients
-        AADGroupNamePrefix          = $AADGroupNamePrefix
-        AADUninstallGroupNamePrefix = $AADUninstallGroupNamePrefix
-        PilotAADGroup               = $PilotAADGroup
-        DeviceOUPath                = $DeviceOUPath
-        OUPath                      = $DeviceOUPath
+        RunInstallAs32Bit             = $RunInstallAs32Bit
+        AllowFallbackSourceLocation   = $AllowFallbackSourceLocation
+        DownloadOnSlowNetwork         = $DownloadOnSlowNetwork
+        EnableSWMapping               = $SWMappingenabled -eq $true
+        SWProductTable                = $SWProductTable
+        SWMapDBName                   = $SWMapDBName
+        CatalogID                     = $TextboxSWCatalogID.Text
+        Owner                         = $env:USERNAME
+        LogFile                       = $logfile
+        ShowSummary                   = $showsummaryfile -eq $true
+        MailServer                    = $mailserver
+        MailFrom                      = $mailfrom
+        MailRecipients                = $mailrecipients
+        AADGroupNamePrefix            = $AADGroupNamePrefix
+        AADUninstallGroupNamePrefix   = $AADUninstallGroupNamePrefix
+        PilotAADGroup                 = $PilotAADGroup
+        DeviceOUPath                  = $DeviceOUPath
+        OUPath                        = $DeviceOUPath
         
     }
 }
@@ -3952,7 +3960,8 @@ function Create-ApplicationObjects {
                 Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
                 Write-Host $message -ForegroundColor Green
                 write-log $message -type 1
-            } catch {
+            }
+            catch {
                 $message = "⚠ Deployment already exists or failed for $ApplicationName to collection $CollectionName. Error: $($_.Exception.Message)"
                 Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
                 Write-Host $message -ForegroundColor Red
@@ -3966,7 +3975,8 @@ function Create-ApplicationObjects {
                 Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
                 Write-Host $message -ForegroundColor Green
                 write-log $message -type 1
-            } catch {
+            }
+            catch {
                 $message = "⚠ UNINSTALL deployment already exists or failed for $ApplicationName to collection $CollectionNameUninstall. Error: $($_.Exception.Message)"
                 Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
                 Write-Host $message -ForegroundColor Red
@@ -3981,7 +3991,8 @@ function Create-ApplicationObjects {
                     Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
                     Write-Host $message -ForegroundColor Green
                     write-log $message -type 1
-                } catch {
+                }
+                catch {
                     $message = "⚠ Test deployment already exists or failed for $ApplicationName to collection $ApplicationtestCollectionname. Error: $($_.Exception.Message)"
                     Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $message
                     Write-Host $message -ForegroundColor Red
@@ -4285,31 +4296,31 @@ if (!$checkboxCreateInIntune.IsChecked -and !$checkboxCreateInConfigMgr.IsChecke
 
 
 $TabControlMain.Add_SelectionChanged({
-    $selectedTab = $TabControlMain.SelectedItem
+        $selectedTab = $TabControlMain.SelectedItem
 
-    switch ($selectedTab.Name) {
-        "TabCreateApp" {
-            $BoxCommonControls.Visibility = "Visible"
-            $ButtonCreate.Visibility = "Visible"
-            $ButtonCreateWinGet.Visibility = "Collapsed"
+        switch ($selectedTab.Name) {
+            "TabCreateApp" {
+                $BoxCommonControls.Visibility = "Visible"
+                $ButtonCreate.Visibility = "Visible"
+                $ButtonCreateWinGet.Visibility = "Collapsed"
+            }
+            "TabCreateWinget" {
+                $BoxCommonControls.Visibility = "Visible"
+                $ButtonCreate.Visibility = "Collapsed"
+                $ButtonCreateWinGet.Visibility = "Visible"
+            }
+            "TabConfig" {
+                $BoxCommonControls.Visibility = "Collapsed"
+                $ButtonCreate.Visibility = "Collapsed"
+                $ButtonCreateWinGet.Visibility = "Collapsed"
+            }
+            default {
+                $BoxCommonControls.Visibility = "Visible"
+                $ButtonCreate.Visibility = "Visible"
+                $ButtonCreateWinGet.Visibility = "Collapsed"
+            }
         }
-        "TabCreateWinget" {
-            $BoxCommonControls.Visibility = "Visible"
-            $ButtonCreate.Visibility = "Collapsed"
-            $ButtonCreateWinGet.Visibility = "Visible"
-        }
-        "TabConfig" {
-            $BoxCommonControls.Visibility = "Collapsed"
-            $ButtonCreate.Visibility = "Collapsed"
-            $ButtonCreateWinGet.Visibility = "Collapsed"
-        }
-        default {
-            $BoxCommonControls.Visibility = "Visible"
-            $ButtonCreate.Visibility = "Visible"
-            $ButtonCreateWinGet.Visibility = "Collapsed"
-        }
-    }
-})
+    })
 
 
 
@@ -4381,45 +4392,46 @@ Get-WingetCmd
 
 
 $ButtonWingetSearch.add_Click({
-    $SearchTerm = $TextBoxWingetSearch.Text
-    $Message = "Searching for $SearchTerm"
+        $SearchTerm = $TextBoxWingetSearch.Text
+        $Message = "Searching for $SearchTerm"
 
 
-    $ProgressBar = New-ProgressBar
-    Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $Message
+        $ProgressBar = New-ProgressBar
+        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation $Message
 
-    Write-Host $Message
-    $arrayItems = @()
+        Write-Host $Message
+        $arrayItems = @()
 
-    # Use PowerShell module if available, else fallback to native
-    if (Get-Command -Name "Find-WinGetPackage" -ErrorAction SilentlyContinue) {
-        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Searching via WinGet PowerShell Module..."
-        $List = Get-WingetAppInfo $SearchTerm
-    } else {
-        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Searching via Native winget.exe..."
-        $List = Get-WingetAppInfo-Native $SearchTerm
-    }
+        # Use PowerShell module if available, else fallback to native
+        if (Get-Command -Name "Find-WinGetPackage" -ErrorAction SilentlyContinue) {
+            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Searching via WinGet PowerShell Module..."
+            $List = Get-WingetAppInfo $SearchTerm
+        }
+        else {
+            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Searching via Native winget.exe..."
+            $List = Get-WingetAppInfo-Native $SearchTerm
+        }
 
-    foreach ($App in $List) {
-        Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Processing $($App.Name)..."
+        foreach ($App in $List) {
+            Start-ProgressBar -ProgressBar $ProgressBar -CurrentOperation "Processing $($App.Name)..."
 
-        $itemObject = New-Object PSObject
+            $itemObject = New-Object PSObject
 
-        $itemObject | Add-Member -Type NoteProperty -Name "ID"      -Value $App.Id
-        $itemObject | Add-Member -Type NoteProperty -Name "Name"    -Value $App.Name
+            $itemObject | Add-Member -Type NoteProperty -Name "ID"      -Value $App.Id
+            $itemObject | Add-Member -Type NoteProperty -Name "Name"    -Value $App.Name
 
-        $version = if ($App.Version) { $App.Version } else { "" }
-        $itemObject | Add-Member -Type NoteProperty -Name "Version" -Value $version
+            $version = if ($App.Version) { $App.Version } else { "" }
+            $itemObject | Add-Member -Type NoteProperty -Name "Version" -Value $version
 
-        $source = if ($App.Source) { $App.Source } else { "" }
-        $itemObject | Add-Member -Type NoteProperty -Name "Source"  -Value $source
+            $source = if ($App.Source) { $App.Source } else { "" }
+            $itemObject | Add-Member -Type NoteProperty -Name "Source"  -Value $source
 
-        $arrayItems += $itemObject
-    }
+            $arrayItems += $itemObject
+        }
 
-    $dataGridWinget.ItemsSource = $arrayItems
-    Close-ProgressBar $ProgressBar
-})
+        $dataGridWinget.ItemsSource = $arrayItems
+        Close-ProgressBar $ProgressBar
+    })
 
 
 
@@ -4455,7 +4467,7 @@ function Get-WingetCmd {
 $WingetDefaultCMD = 'Execute-Process -Path "$winget" -Parameters "install --id <AppID> -h --accept-package-agreements --accept-source-agreements"'
 
 
-    $dataGridWinget.add_SelectionChanged({
+$dataGridWinget.add_SelectionChanged({
         foreach ($WingetApp in $dataGridWinget.SelectedItems) {
             $WingetCMD = $WingetDefaultCMD.replace('<AppID>', $($WingetApp.ID)).replace('<AppName>', $($WingetApp.Name))
             $TextBoxWingetPreview.Text = $WingetCMD
@@ -4466,156 +4478,160 @@ $WingetDefaultCMD = 'Execute-Process -Path "$winget" -Parameters "install --id <
 
 $ButtonCreateWinGet.add_Click({
 
-    $ProgressBar = New-ProgressBar
-    Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "Integrate Winget Application into PSADT Template"
+        $ProgressBar = New-ProgressBar
+        Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "Integrate Winget Application into PSADT Template"
 
-    # Check if PSADT Template path is valid
-    if ([string]::IsNullOrWhiteSpace($PSADTTemplate) -or -not (Test-Path $PSADTTemplate)) {
+        # Check if PSADT Template path is valid
+        if ([string]::IsNullOrWhiteSpace($PSADTTemplate) -or -not (Test-Path $PSADTTemplate)) {
 
-        $result = [System.Windows.MessageBox]::Show("PSADT Template path is not valid. Do you want to download the v4 template from GitHub?", "PSADT Template Missing", "YesNo", "Warning")
+            $result = [System.Windows.MessageBox]::Show("PSADT Template path is not valid. Do you want to download the v4 template from GitHub?", "PSADT Template Missing", "YesNo", "Warning")
 
-        if ($result -eq "Yes") {
-            $templateFolder = Download-PSADTTemplate -DestinationFolder $Packagefolderpath -ProgressBar $ProgressBar
+            if ($result -eq "Yes") {
+                $templateFolder = Download-PSADTTemplate -DestinationFolder $Packagefolderpath -ProgressBar $ProgressBar
 
 
-            if ($templateFolder -ne $null) {
-                $global:PSADTTemplate = $templateFolder.FullName
+                if ($templateFolder -ne $null) {
+                    $global:PSADTTemplate = $templateFolder.FullName
+                }
+                else {
+                    [System.Windows.MessageBox]::Show("Template could not be downloaded. Aborting.", "Error", "OK", "Error")
+                    return
+                }
             }
             else {
-                [System.Windows.MessageBox]::Show("Template could not be downloaded. Aborting.", "Error", "OK", "Error")
+                [System.Windows.MessageBox]::Show("You chose not to download the template. Aborting.", "Cancelled", "OK", "Warning")
                 return
             }
         }
-        else {
-            [System.Windows.MessageBox]::Show("You chose not to download the template. Aborting.", "Cancelled", "OK", "Warning")
-            return
-        }
-    }
 
-    foreach ($WingetApp in $dataGridWinget.SelectedItems) {
-        $message = "Start creating PSADT App for $($WingetApp.Name)"
-        Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 1
-        Write-Host $message
-
-        $yaml = Get-WingetInstallContent -PackageId $WingetApp.ID -PackageVersion $WingetApp.Version
-        $localeYaml = Get-WingetLocaleContent -PackageId $WingetApp.ID -PackageVersion $WingetApp.Version
-
-        $publisher = if ($localeYaml) { $localeYaml.Publisher } else { "Unknown Publisher" }
-        $shortDesc = if ($localeYaml) { $localeYaml.ShortDescription } else { "" }
-
-        $description = "$shortDesc | WinGetID=$($WingetApp.ID) | Update=True | Created by ApplicationManager from WinGet"
-
-
-        Write-Host $publisher
-
-
-        if ($yaml -eq $null) {
-            $message = "❌ YAML not found for $($WingetApp.ID)"
+        foreach ($WingetApp in $dataGridWinget.SelectedItems) {
+            $message = "Start creating PSADT App for $($WingetApp.Name)"
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 1
             Write-Host $message
-            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 3
-            continue
-        }
 
-        # Build folder path using version
-        $WingetAppTMPPath = Join-Path $Packagefolderpath "$($WingetApp.Name)_$($WingetApp.ID)"
-        Write-Host "Source: $PSADTTemplate"
-        Write-Host "Destination: $WingetAppTMPPath"
-        try {
+            $yaml = Get-WingetInstallContent -PackageId $WingetApp.ID -PackageVersion $WingetApp.Version
+            $localeYaml = Get-WingetLocaleContent -PackageId $WingetApp.ID -PackageVersion $WingetApp.Version
 
-            $itemsToCopy = Get-ChildItem -Path $PSADTTemplate -Force
+            $publisher = if ($localeYaml) { $localeYaml.Publisher } else { "Unknown Publisher" }
+            $shortDesc = if ($localeYaml) { $localeYaml.ShortDescription } else { "" }
 
-            foreach ($item in $itemsToCopy) {
-                $destination = Join-Path $WingetAppTMPPath $item.Name
+            $description = "$shortDesc | WinGetID=$($WingetApp.ID) | Update=True | Created by ApplicationManager from WinGet"
 
-                if (Test-Path $destination) {
-                    Write-Host "Skipping existing: $destination"
-                } else {
-     
-                    try {
-                        Copy-Item -Path $item.FullName -Destination $destination -Recurse -Force
+
+            Write-Host $publisher
+
+
+            if ($yaml -eq $null) {
+                $message = "❌ YAML not found for $($WingetApp.ID)"
+                Write-Host $message
+                Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 3
+                continue
+            }
+
+            # Build folder path using version
+            $WingetAppTMPPath = Join-Path $Packagefolderpath "$($WingetApp.Name)_$($WingetApp.ID)"
+            Write-Host "Source: $PSADTTemplate"
+            Write-Host "Destination: $WingetAppTMPPath"
+            try {
+
+                $itemsToCopy = Get-ChildItem -Path $PSADTTemplate -Force
+
+                foreach ($item in $itemsToCopy) {
+                    $destination = Join-Path $WingetAppTMPPath $item.Name
+
+                    if (Test-Path $destination) {
+                        Write-Host "Skipping existing: $destination"
                     }
-                    catch {
-                        Write-Warning "❌ Failed to copy: $($item.FullName) → $destination"
-                        Write-Warning $_
+                    else {
+     
+                        try {
+                            Copy-Item -Path $item.FullName -Destination $destination -Recurse -Force
+                        }
+                        catch {
+                            Write-Warning "❌ Failed to copy: $($item.FullName) → $destination"
+                            Write-Warning $_
+                        }
                     }
                 }
+
+            }
+            catch {
+                $message = "❌ Failed to copy template to $WingetAppTMPPath"
+                Write-Host $message
+                Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 3
+                continue
             }
 
-        }
-        catch {
-            $message = "❌ Failed to copy template to $WingetAppTMPPath"
-            Write-Host $message
-            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 3
-            continue
-        }
+            # Determine which file to patch (v3 or v4)
+            $fileV3 = Join-Path $WingetAppTMPPath "Deploy-Application.ps1"
+            $fileV4 = Join-Path $WingetAppTMPPath "Invoke-AppDeployToolkit.ps1"
+            $file = if (Test-Path $fileV4) { $fileV4 } elseif (Test-Path $fileV3) { $fileV3 } else { $null }
 
-        # Determine which file to patch (v3 or v4)
-        $fileV3 = Join-Path $WingetAppTMPPath "Deploy-Application.ps1"
-        $fileV4 = Join-Path $WingetAppTMPPath "Invoke-AppDeployToolkit.ps1"
-        $file = if (Test-Path $fileV4) { $fileV4 } elseif (Test-Path $fileV3) { $fileV3 } else { $null }
+            if (-not $file) {
+                $message = "❌ No PSADT script found in: $WingetAppTMPPath"
+                Write-Host $message
+                Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 3
+                continue
+            }
 
-        if (-not $file) {
-            $message = "❌ No PSADT script found in: $WingetAppTMPPath"
-            Write-Host $message
-            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation $message -Severity 3
-            continue
-        }
+            # Set executable name for install/uninstall commands
+            if ($file -eq $fileV4) {
+                $installerExe = "Invoke-AppDeployToolkit.exe"
+            }
+            elseif ($file -eq $fileV3) {
+                $installerExe = "Deploy-Application.exe"
+            }
+            else {
+                $installerExe = "Deploy-Application.exe"  # fallback just in case
+            }
 
-        # Set executable name for install/uninstall commands
-        if ($file -eq $fileV4) {
-            $installerExe = "Invoke-AppDeployToolkit.exe"
-        } elseif ($file -eq $fileV3) {
-            $installerExe = "Deploy-Application.exe"
-        } else {
-            $installerExe = "Deploy-Application.exe"  # fallback just in case
-        }
+            # Default installer (from PSADT)
+            $InstallationProgram = "$installerExe"
+            $UninstallationProgram = "$installerExe UNINSTALL"
 
-        # Default installer (from PSADT)
-        $InstallationProgram = "$installerExe"
-        $UninstallationProgram = "$installerExe UNINSTALL"
+            # Check for local _install.bat / _uninstall.bat overrides
+            $installBat = Join-Path $WingetAppTMPPath "_install.bat"
+            $uninstallBat = Join-Path $WingetAppTMPPath "_uninstall.bat"
 
-        # Check for local _install.bat / _uninstall.bat overrides
-        $installBat = Join-Path $WingetAppTMPPath "_install.bat"
-        $uninstallBat = Join-Path $WingetAppTMPPath "_uninstall.bat"
+            if (Test-Path $installBat) {
+                $InstallationProgram = "_install.bat"
+                Write-Host "Found custom install script: $InstallationProgram"
+            }
 
-        if (Test-Path $installBat) {
-            $InstallationProgram = "_install.bat"
-            Write-Host "Found custom install script: $InstallationProgram"
-        }
+            if (Test-Path $uninstallBat) {
+                $UninstallationProgram = "_uninstall.bat"
+                Write-Host "Found custom uninstall script: $UninstallationProgram"
+            }
 
-        if (Test-Path $uninstallBat) {
-            $UninstallationProgram = "_uninstall.bat"
-            Write-Host "Found custom uninstall script: $UninstallationProgram"
-        }
+            # Prepare content for insertion
+            $DefaultWingetCall = $WingetFunction + $TextBoxWingetPreview.Text
+            $Content = $DefaultWingetCall.Replace('<AppID>', $WingetApp.ID).Replace('<AppName>', $WingetApp.Name)
 
-        # Prepare content for insertion
-        $DefaultWingetCall = $WingetFunction + $TextBoxWingetPreview.Text
-        $Content = $DefaultWingetCall.Replace('<AppID>', $WingetApp.ID).Replace('<AppName>', $WingetApp.Name)
-
-        try {
-            Replace-InFile -FilePath $file -Find '## <Perform Installation tasks here>' -Replace $Content
-            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "✅ Successfully created '$($WingetApp.Name)' in Sourcepath"
-        }
-        catch {
-            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ Failed to modify script for $($WingetApp.Name)" -Severity 3
-        }
+            try {
+                Replace-InFile -FilePath $file -Find '## <Perform Installation tasks here>' -Replace $Content
+                Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "✅ Successfully created '$($WingetApp.Name)' in Sourcepath"
+            }
+            catch {
+                Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ Failed to modify script for $($WingetApp.Name)" -Severity 3
+            }
 
         
-        if ($checkboxCreateInConfigMgr.IsChecked -or $checkboxCreateInIntune.IsChecked) {
-            # Define application name and other deployment info
+            if ($checkboxCreateInConfigMgr.IsChecked -or $checkboxCreateInIntune.IsChecked) {
+                # Define application name and other deployment info
 
-            Write-Host $WingetApp
-            Write-Host $yaml
+                Write-Host $WingetApp
+                Write-Host $yaml
 
-            if ($publisher -and $publisher -ne "Unknown Publisher") {
-                $ApplicationName = "$publisher $($WingetApp.Name) $($WingetApp.Version)"
-            } else {
-                $ApplicationName = "$($WingetApp.Name) $($WingetApp.Version)"
-            }
+                if ($publisher -and $publisher -ne "Unknown Publisher") {
+                    $ApplicationName = "$publisher $($WingetApp.Name) $($WingetApp.Version)"
+                }
+                else {
+                    $ApplicationName = "$($WingetApp.Name) $($WingetApp.Version)"
+                }
 
-            $DeployPurpose = if ($RadioButtonRequired.IsChecked) { "Required" } else { "Available" }
+                $DeployPurpose = if ($RadioButtonRequired.IsChecked) { "Required" } else { "Available" }
 
-            <#
+                <#
 
             $DetectionScript = @'
 $app = winget list '<AppID>' -e --accept-source-agreements 2>&1
@@ -4651,70 +4667,72 @@ if ($app -notmatch 'No installed package found matching input criteria') {
             #>
 
 
-            # Define support path
-            $supportFilesPath = Join-Path $WingetAppTMPPath "SupportFiles"
-            if (-not (Test-Path $supportFilesPath)) {
-                New-Item -Path $supportFilesPath -ItemType Directory -Force | Out-Null
-            }
-
-            # Read detection script template
-            $scriptTemplatePath = Join-Path $workingdir "Files\DetectionScriptWingetTemplate.ps1"
-
-            if (Test-Path $scriptTemplatePath) {
-                try {
-                    $DetectionScript = Get-Content -Path $scriptTemplatePath -Raw
-
-                    # Replace placeholders
-                    $DetectionScript = $DetectionScript.Replace('<APPID>', $WingetApp.ID)
-                    $DetectionScript = $DetectionScript.Replace('<APPVERSION>', $WingetApp.Version)
-
-                    # Save processed script
-                    $detectScriptPath = Join-Path $supportFilesPath "Detect-$($WingetApp.ID).ps1"
-                    $DetectionScript | Out-File -FilePath $detectScriptPath -Encoding UTF8 -Force
-
-                    Write-Host "✅ Detection script written to: $detectScriptPath"
-                } catch {
-                    Write-Warning "❌ Failed to read or write detection script: $_"
+                # Define support path
+                $supportFilesPath = Join-Path $WingetAppTMPPath "SupportFiles"
+                if (-not (Test-Path $supportFilesPath)) {
+                    New-Item -Path $supportFilesPath -ItemType Directory -Force | Out-Null
                 }
-            } else {
-                Write-Warning "❌ Detection script template not found: $scriptTemplatePath"
+
+                # Read detection script template
+                $scriptTemplatePath = Join-Path $workingdir "Files\DetectionScriptWingetTemplate.ps1"
+
+                if (Test-Path $scriptTemplatePath) {
+                    try {
+                        $DetectionScript = Get-Content -Path $scriptTemplatePath -Raw
+
+                        # Replace placeholders
+                        $DetectionScript = $DetectionScript.Replace('<APPID>', $WingetApp.ID)
+                        $DetectionScript = $DetectionScript.Replace('<APPVERSION>', $WingetApp.Version)
+
+                        # Save processed script
+                        $detectScriptPath = Join-Path $supportFilesPath "Detect-$($WingetApp.ID).ps1"
+                        $DetectionScript | Out-File -FilePath $detectScriptPath -Encoding UTF8 -Force
+
+                        Write-Host "✅ Detection script written to: $detectScriptPath"
+                    }
+                    catch {
+                        Write-Warning "❌ Failed to read or write detection script: $_"
+                    }
+                }
+                else {
+                    Write-Warning "❌ Detection script template not found: $scriptTemplatePath"
+                }
+
+
+
+
+
+                $appParams = @{
+                    ApplicationName         = $ApplicationName
+                    Appfullname             = $ApplicationName
+                    ApplicationVersion      = $WingetApp.Version
+                    ApplicationDescription  = $description
+                    Publisher               = $publisher
+                    InstallationProgram     = $InstallationProgram
+                    UninstallationProgram   = $UninstallationProgram
+                    ContentSourcePath       = (Join-Path $Packagefolderpath "$($WingetApp.Name)_$($WingetApp.ID)")
+                    CollectionName          = $ApplicationName
+                    CollectionNameUninstall = "$ApplicationName - Uninstall"
+                    ADGroupName             = "$($ADGroupNamePrefix)_$($ApplicationName)"
+                    ADGroupDescription      = "Members of this group will be targeted for deployment of $ApplicationName in ConfigMgr"
+                    ProductCode             = $null
+                    ProductVersion          = $WingetApp.Version
+                    DetectionType           = "Script"
+                    DetectionMethod         = $DetectionScript
+                    DeployPurpose           = $DeployPurpose
+                }
+
+                $globalParams = Get-GlobalDeploymentSettings
+                Create-ApplicationObjects @globalParams @appParams
             }
 
-
-
-
-
-            $appParams = @{
-                ApplicationName           = $ApplicationName
-                Appfullname               = $ApplicationName
-                ApplicationVersion        = $WingetApp.Version
-                ApplicationDescription    = $description
-                Publisher                 = $publisher
-                InstallationProgram       = $InstallationProgram
-                UninstallationProgram     = $UninstallationProgram
-                ContentSourcePath         = (Join-Path $Packagefolderpath "$($WingetApp.Name)_$($WingetApp.ID)")
-                CollectionName            = $ApplicationName
-                CollectionNameUninstall   = "$ApplicationName - Uninstall"
-                ADGroupName               = "$($ADGroupNamePrefix)_$($ApplicationName)"
-                ADGroupDescription        = "Members of this group will be targeted for deployment of $ApplicationName in ConfigMgr"
-                ProductCode               = $null
-                ProductVersion            = $WingetApp.Version
-                DetectionType             = "Script"
-                DetectionMethod           = $DetectionScript
-                DeployPurpose             = $DeployPurpose
-            }
-
-            $globalParams = Get-GlobalDeploymentSettings
-            Create-ApplicationObjects @globalParams @appParams
+            Start-Sleep -Seconds 2
         }
 
-        Start-Sleep -Seconds 2
-    }
 
 
-
-    Close-ProgressBar $ProgressBar
-})
+        Close-ProgressBar $ProgressBar
+    })
 
 
 # fill the combobox with some powershell objects
@@ -4724,75 +4742,79 @@ if ($app -notmatch 'No installed package found matching input criteria') {
 #$ButtonCreate.add_Click({ ButtonCreateClick })
 
 $ButtonCreate.add_Click({
-    if (-not (Validate-Form)) {
-        return
-    }
+        if (-not (Validate-Form)) {
+            return
+        }
 
-    $ProductCode = $null
-    $ProductVersion = $null
+        $ProductCode = $null
+        $ProductVersion = $null
 
-    if ($TextBoxMSIPackage.Text) {
-        try {
-            $ProductCode = [GUID](Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductCode)[3]
-        } catch { $ProductCode = $null }
+        if ($TextBoxMSIPackage.Text) {
+            try {
+                $ProductCode = [GUID](Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductCode)[3]
+            }
+            catch { $ProductCode = $null }
 
-        try {
-            $ProductVersion = (Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductVersion).Trim()
-        } catch { $ProductVersion = $null }
-    }
+            try {
+                $ProductVersion = (Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductVersion).Trim()
+            }
+            catch { $ProductVersion = $null }
+        }
 
-    $DetectionType = if ($ProductCode -and $ProductVersion) { "MSI" } else { "Script" }
+        $DetectionType = if ($ProductCode -and $ProductVersion) { "MSI" } else { "Script" }
 
-    $ApplicationName = if ($TextBoxVersion.Text) { "$($TextBoxAppName.Text) $($TextBoxVersion.Text)" } else { $TextBoxAppName.Text }
-    $DeployPurpose = "Available"
-    if ($RadioButtonRequired.IsChecked) { $DeployPurpose = "Required" }
-    elseif ($RadioButtonAvailable.IsChecked) { $DeployPurpose = "Available" }
+        $ApplicationName = if ($TextBoxVersion.Text) { "$($TextBoxAppName.Text) $($TextBoxVersion.Text)" } else { $TextBoxAppName.Text }
+        $DeployPurpose = "Available"
+        if ($RadioButtonRequired.IsChecked) { $DeployPurpose = "Required" }
+        elseif ($RadioButtonAvailable.IsChecked) { $DeployPurpose = "Available" }
 
-    if ($TextBoxMSIPackage.Text) {
-        try {
-            $ProductCode = [GUID](Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductCode)[3]
-        } catch { $ProductCode = $null }
+        if ($TextBoxMSIPackage.Text) {
+            try {
+                $ProductCode = [GUID](Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductCode)[3]
+            }
+            catch { $ProductCode = $null }
 
-        try {
-            $ProductVersion = (Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductVersion).Trim()
-        } catch { $ProductVersion = $null }
-    }
+            try {
+                $ProductVersion = (Get-MsiFileInformation -Path $TextBoxMSIPackage.Text -Property ProductVersion).Trim()
+            }
+            catch { $ProductVersion = $null }
+        }
 
-    $DetectionType = if ($ProductCode -and $ProductVersion) { "MSI" } else { "Script" }
+        $DetectionType = if ($ProductCode -and $ProductVersion) { "MSI" } else { "Script" }
 
 
 
-    $appParams = @{
-        ApplicationName           = $ApplicationName
-        Appfullname               = "$($TextBoxAppName.Text) $($TextBoxVersion.Text)"
-        ApplicationVersion        = $TextBoxVersion.Text
-        ApplicationDescription    = "Created by ApplicationManager"
-        Publisher                 = $TextBoxPublisher.Text
-        InstallationProgram       = $TextBoxInstallProgram.Text
-        UninstallationProgram     = $TextBoxUnInstallProgram.Text
-        ContentSourcePath         = $TextBoxSourcePath.Text
-        CollectionName            = $TextBoxCollection.Text
-        CollectionNameUninstall   = "$($TextBoxCollection.Text) - Uninstall"
-        ADGroupName               = $TextBoxADGroup.Text
-        ADGroupDescription        = "Members of this group will be targeted for deployment of $($TextBoxAppName.Text) in ConfigMgr"
-        ProductCode               = $ProductCode
-        ProductVersion            = $ProductVersion
-        DetectionType             = $DetectionType
-        DetectionMethod           = 'if (Test-Path C:\\DummyDetectionMethod) {Write-Host "IMPORTANT! This detection method does not work. You must manually change it."}'
-        DeployPurpose             = $DeployPurpose
+        $appParams = @{
+            ApplicationName         = $ApplicationName
+            Appfullname             = "$($TextBoxAppName.Text) $($TextBoxVersion.Text)"
+            ApplicationVersion      = $TextBoxVersion.Text
+            ApplicationDescription  = "Created by ApplicationManager"
+            Publisher               = $TextBoxPublisher.Text
+            InstallationProgram     = $TextBoxInstallProgram.Text
+            UninstallationProgram   = $TextBoxUnInstallProgram.Text
+            ContentSourcePath       = $TextBoxSourcePath.Text
+            CollectionName          = $TextBoxCollection.Text
+            CollectionNameUninstall = "$($TextBoxCollection.Text) - Uninstall"
+            ADGroupName             = $TextBoxADGroup.Text
+            ADGroupDescription      = "Members of this group will be targeted for deployment of $($TextBoxAppName.Text) in ConfigMgr"
+            ProductCode             = $ProductCode
+            ProductVersion          = $ProductVersion
+            DetectionType           = $DetectionType
+            DetectionMethod         = 'if (Test-Path C:\\DummyDetectionMethod) {Write-Host "IMPORTANT! This detection method does not work. You must manually change it."}'
+            DeployPurpose           = $DeployPurpose
         
-    }
+        }
 
-    $globalParams = Get-GlobalDeploymentSettings
-    Create-ApplicationObjects @globalParams @appParams
-})
+        $globalParams = Get-GlobalDeploymentSettings
+        Create-ApplicationObjects @globalParams @appParams
+    })
 
 $CheckBoxCreateDeployment.Add_Checked({
-    CheckBoxCreateDeploymentChanged
-})
+        CheckBoxCreateDeploymentChanged
+    })
 $CheckBoxCreateDeployment.Add_Unchecked({
-    CheckBoxCreateDeploymentChanged
-})
+        CheckBoxCreateDeploymentChanged
+    })
 
 
 
