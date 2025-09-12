@@ -4433,11 +4433,39 @@ $ButtonWingetSearch.add_Click({
         Close-ProgressBar $ProgressBar
     })
 
-
-
-
 #Define WingetFunction for use in PSADT
-$WingetFunction = '
+$WingetFunctionv4 = '
+function Get-WingetCmd {
+            #WinGet Path (if User/Admin context)
+            $UserWingetPath = Get-Command winget.exe -ErrorAction SilentlyContinue
+            #WinGet Path (if system context)
+            $SystemWingetPath = Resolve-Path "C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe"
+
+            #Get Winget Location in User/Admin context
+            if ($UserWingetPath) {
+                $Script:Winget = $UserWingetPath.Source
+                Write-ADTLogEntry  -Message "WinGet path defined $Winget" -Severity 1 -Source $adtSession.DeployAppScriptFriendlyName
+            }
+            #Get Winget Location in System context
+            elseif ($SystemWingetPath) {
+                #If multiple version, pick last one
+                $Script:Winget = $SystemWingetPath[-1].Path
+                Write-ADTLogEntry  -Message "WinGet path defined $Winget" -Severity 1 -Source $adtSession.DeployAppScriptFriendlyName
+            }
+            else {
+                Write-ADTLogEntry -Message "WinGet is not installed, mandatory to run WinGet integration" -Severity 3 -Source $adtSession.DeployAppScriptFriendlyName
+                
+            }
+	}
+    Get-WingetCmd
+
+	#Install/Uninstall <AppName> by Winget
+'
+$WingetInstallCMDv4 = 'Start-ADTProcess -FilePath "$Winget" -ArgumentList "install --id <AppID> -h --accept-package-agreements --accept-source-agreements"'
+$WingetUninstallCMDv4 = 'Start-ADTProcess -FilePath "$Winget" -ArgumentList "uninstall --id <AppID> -h --accept-source-agreements"'
+
+
+$WingetFunctionv3 = '
 function Get-WingetCmd {
             #WinGet Path (if User/Admin context)
             $UserWingetPath = Get-Command winget.exe -ErrorAction SilentlyContinue
@@ -4460,20 +4488,23 @@ function Get-WingetCmd {
                 
             }
 	}
-
     Get-WingetCmd
-	#Install <AppName> by Winget
+
+	#Install/Uninstall <AppName> by Winget
 '
-$WingetDefaultCMD = 'Execute-Process -Path "$winget" -Parameters "install --id <AppID> -h --accept-package-agreements --accept-source-agreements"'
+$WingetInstallCMDv3 = 'Execute-Process -Path "$Winget" -Parameters "install --id <AppID> -h --accept-package-agreements --accept-source-agreements"'
+$WingetUninstallCMDv3 = 'Execute-Process -Path "$Winget" -Parameters "uninstall --id <AppID> -h --accept-source-agreements"'
+
+
 
 
 $dataGridWinget.add_SelectionChanged({
-        foreach ($WingetApp in $dataGridWinget.SelectedItems) {
-            $WingetCMD = $WingetDefaultCMD.replace('<AppID>', $($WingetApp.ID)).replace('<AppName>', $($WingetApp.Name))
-            $TextBoxWingetPreview.Text = $WingetCMD
-        }
+    foreach ($WingetApp in $dataGridWinget.SelectedItems) {
+        $WingetCMD = $WingetInstallCMDv4.replace('<AppID>', $($WingetApp.ID)).replace('<AppName>', $($WingetApp.Name))
+        $TextBoxWingetPreview.Text = $WingetCMD
+    }
 
-    })
+})
 
 
 $ButtonCreateWinGet.add_Click({
@@ -4574,16 +4605,21 @@ $ButtonCreateWinGet.add_Click({
                 continue
             }
 
-            # Set executable name for install/uninstall commands
-            if ($file -eq $fileV4) {
-                $installerExe = "Invoke-AppDeployToolkit.exe"
-            }
-            elseif ($file -eq $fileV3) {
-                $installerExe = "Deploy-Application.exe"
-            }
-            else {
-                $installerExe = "Deploy-Application.exe"  # fallback just in case
-            }
+        # Set executable name for install/uninstall commands
+        if ($file -eq $fileV4) {
+            $installerExe = "Invoke-AppDeployToolkit.exe"
+            $InstallWingetCall = $WingetFunctionv4 + $WingetInstallCMDv4
+            $UninstallWingetCall = $WingetFunctionv4 + $WingetUninstallCMDv4
+
+        } elseif ($file -eq $fileV3) {
+            $installerExe = "Deploy-Application.exe"
+            $InstallWingetCall = $WingetFunctionv3 + $WingetInstallCMDv3
+            $UninstallWingetCall = $WingetFunctionv3 + $WingetUninstallCMDv3
+        } else {
+            $installerExe = "Invoke-AppDeployToolkit.exe" # fallback just in case
+            $InstallWingetCall = $WingetFunctionv4 + $WingetInstallCMDv4
+            $UninstallWingetCall = $WingetFunctionv4 + $WingetUninstallCMDv4
+        }
 
             # Default installer (from PSADT)
             $InstallationProgram = "$installerExe"
@@ -4603,17 +4639,19 @@ $ButtonCreateWinGet.add_Click({
                 Write-Host "Found custom uninstall script: $UninstallationProgram"
             }
 
-            # Prepare content for insertion
-            $DefaultWingetCall = $WingetFunction + $TextBoxWingetPreview.Text
-            $Content = $DefaultWingetCall.Replace('<AppID>', $WingetApp.ID).Replace('<AppName>', $WingetApp.Name)
+        # Prepare content for insertion
 
-            try {
-                Replace-InFile -FilePath $file -Find '## <Perform Installation tasks here>' -Replace $Content
-                Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "✅ Successfully created '$($WingetApp.Name)' in Sourcepath"
-            }
-            catch {
-                Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ Failed to modify script for $($WingetApp.Name)" -Severity 3
-            }
+        $InstallContent = $InstallWingetCall.Replace('<AppID>', $WingetApp.ID).Replace('<AppName>', $WingetApp.Name)
+        $UninstallContent = $UninstallWingetCall.Replace('<AppID>', $WingetApp.ID).Replace('<AppName>', $WingetApp.Name)
+
+        try {
+            Replace-InFile -FilePath $file -Find '## <Perform Installation tasks here>' -Replace $InstallContent
+            Replace-InFile -FilePath $file -Find '## <Perform Uninstallation tasks here>' -Replace $UninstallContent
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "✅ Successfully created '$($WingetApp.Name)' in Sourcepath"
+        }
+        catch {
+            Start-ProgressBar -ProgressBar $ProgressBar -Activity "Create WinGET App" -CurrentOperation "❌ Failed to modify script for $($WingetApp.Name)" -Severity 3
+        }
 
         
             if ($checkboxCreateInConfigMgr.IsChecked -or $checkboxCreateInIntune.IsChecked) {
