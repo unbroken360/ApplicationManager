@@ -3845,7 +3845,7 @@ function Get-GlobalDeploymentSettings {
         MailFrom                      = $mailfrom
         MailRecipients                = $mailrecipients
         AADGroupNamePrefix            = $AADGroupNamePrefix
-        AADUninstallGroupNamePrefix   = $AADUninstallGroupNamePrefix
+        AADUninstallGroupNamePrefix   = $AADGroupNamePrefix
         PilotAADGroup                 = $PilotAADGroup
         DeviceOUPath                  = $DeviceOUPath
         OUPath                        = $DeviceOUPath
